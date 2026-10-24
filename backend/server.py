@@ -40,8 +40,10 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 # ---------------- DB ----------------
 import certifi
 
-mongo_url = os.environ['MONGO_URL']
-client_kwargs = {}
+mongo_url = os.environ.get('MONGO_URL', '').strip().strip('"').strip("'")
+client_kwargs = {
+    "serverSelectionTimeoutMS": 15000,
+}
 if "mongodb+srv://" in mongo_url or "ssl=true" in mongo_url.lower() or "tls=true" in mongo_url.lower():
     try:
         client_kwargs["tlsCAFile"] = certifi.where()
@@ -49,7 +51,8 @@ if "mongodb+srv://" in mongo_url or "ssl=true" in mongo_url.lower() or "tls=true
         pass
 
 client = AsyncIOMotorClient(mongo_url, **client_kwargs)
-db = client[os.environ['DB_NAME']]
+db_name = os.environ.get('DB_NAME', 'fleet_manager').strip().strip('"').strip("'")
+db = client[db_name]
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
