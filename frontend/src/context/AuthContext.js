@@ -7,10 +7,27 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null); // null = checking
 
   useEffect(() => {
+    let unmounted = false;
+    const timer = setTimeout(() => {
+      if (!unmounted) setUser((prev) => (prev === null ? false : prev));
+    }, 4000);
+
     api
       .get("/auth/me")
-      .then((r) => setUser(r.data))
-      .catch(() => setUser(false));
+      .then((r) => {
+        if (!unmounted) setUser(r.data);
+      })
+      .catch(() => {
+        if (!unmounted) setUser(false);
+      })
+      .finally(() => {
+        clearTimeout(timer);
+      });
+
+    return () => {
+      unmounted = true;
+      clearTimeout(timer);
+    };
   }, []);
 
   const login = async (email, password) => {
