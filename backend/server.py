@@ -39,6 +39,8 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 # ---------------- DB ----------------
 import certifi
+import pymongo
+import gridfs
 
 mongo_url = os.environ.get('MONGO_URL', '').strip().strip('"').strip("'")
 client_kwargs = {
@@ -53,6 +55,11 @@ if "mongodb+srv://" in mongo_url or "ssl=true" in mongo_url.lower() or "tls=true
 client = AsyncIOMotorClient(mongo_url, **client_kwargs)
 db_name = os.environ.get('DB_NAME', 'fleet_manager').strip().strip('"').strip("'")
 db = client[db_name]
+
+sync_client = pymongo.MongoClient(mongo_url, **client_kwargs)
+sync_db = sync_client[db_name]
+fs = gridfs.GridFS(sync_db)
+
 
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
@@ -1157,12 +1164,11 @@ async def report_word(user: dict = Depends(get_current_user)):
     )
 
 
-# ================= Object Storage =================
+# ================= Object Storage (MongoDB GridFS) =================
 APP_NAME = "fleetmanager"
 STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
 STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
 EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
-_storage_key = None
 
 MIME_TYPES = {
     "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
@@ -1172,47 +1178,54 @@ ALLOWED_EXT = set(MIME_TYPES.keys())
 
 
 def init_storage(force: bool = False):
-    global _storage_key
-    if _storage_key and not force:
-        return _storage_key
-    resp = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=30)
-    resp.raise_for_status()
-    _storage_key = resp.json()["storage_key"]
-    return _storage_key
+    global fs
+    if fs is None:
+        try:
+            fs = gridfs.GridFS(sync_db)
+        except Exception as e:
+            logger.error(f"GridFS init failed: {e}")
+            raise
+    return True
 
 
 def put_object(path: str, data: bytes, content_type: str) -> dict:
-    last = None
-    for attempt in range(3):
-        key = init_storage(force=attempt > 0)
-        resp = requests.put(f"{STORAGE_URL}/objects/{path}",
-                            headers={"X-Storage-Key": key, "Content-Type": content_type},
-                            data=data, timeout=120)
-        last = resp
-        if resp.status_code < 400:
-            return resp.json()
-        if resp.status_code in (404, 429, 500, 502, 503, 504):
-            time.sleep(0.6 * (attempt + 1))
-            continue
-        resp.raise_for_status()
-    last.raise_for_status()
-    return last.json()
+    global fs
+    if fs is None:
+        init_storage()
+    try:
+        for old in fs.find({"filename": path}):
+            fs.delete(old._id)
+    except Exception:
+        pass
+    fs.put(data, filename=path, metadata={"content_type": content_type})
+    return {"path": path, "size": len(data)}
 
 
 def get_object(path: str):
-    last = None
-    for attempt in range(3):
-        key = init_storage(force=attempt > 0)
-        resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
-        last = resp
-        if resp.status_code < 400:
-            return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
-        if resp.status_code in (429, 500, 502, 503, 504):
-            time.sleep(0.6 * (attempt + 1))
-            continue
-        resp.raise_for_status()
-    last.raise_for_status()
-    return last.content, last.headers.get("Content-Type", "application/octet-stream")
+    global fs
+    if fs is None:
+        init_storage()
+    f = fs.find_one({"filename": path})
+    if f is not None:
+        ct = (f.metadata or {}).get("content_type") if hasattr(f, "metadata") and f.metadata else None
+        if not ct and hasattr(f, "content_type"):
+            ct = getattr(f, "content_type", None)
+        return f.read(), ct or "application/octet-stream"
+
+    # Optional legacy fallback to Emergent storage if file was stored there previously
+    if EMERGENT_KEY and STORAGE_URL:
+        try:
+            resp_init = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=10)
+            if resp_init.status_code < 400:
+                k = resp_init.json().get("storage_key")
+                resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": k}, timeout=20)
+                if resp.status_code < 400:
+                    return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
+        except Exception:
+            pass
+
+    raise FileNotFoundError(f"File {path} not found")
+
 
 
 # ================= Document endpoints =================
@@ -3173,3 +3186,8 @@ async def startup():
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
+    try:
+        sync_client.close()
+    except Exception:
+        pass
+
