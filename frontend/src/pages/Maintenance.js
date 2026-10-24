@@ -130,6 +130,7 @@ export default function Maintenance() {
       const hay = `${plateById[m.vehicle_id] || ""} ${m.service_type} ${m.description} ${m.mechanic}`.toLowerCase();
       return !q || hay.includes(q.toLowerCase());
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, q, vehicles]);
 
   const toEur = (m) => (m.cost_currency === "EUR" ? Number(m.cost) || 0 : (Number(m.cost) || 0) / (rate || 117));

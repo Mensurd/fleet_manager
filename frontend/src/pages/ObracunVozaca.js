@@ -145,6 +145,7 @@ export default function ObracunVozaca() {
       setCashAdvance(String(serverAdv));
       openedCashAdvanceRef.current = serverAdv;
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list, editingId]);
 
   const addExpense = () =>
