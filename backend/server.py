@@ -3109,9 +3109,10 @@ def get_cors_origins():
         "http://127.0.0.1:3001",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "https://fleet-manager-olive.vercel.app",
     ]
     for env_var in ("FRONTEND_URL", "CORS_ORIGINS"):
-        val = os.environ.get(env_var, "").strip()
+        val = os.environ.get(env_var, "").strip().strip('"').strip("'")
         if val and val != "*":
             for part in val.split(","):
                 p = part.strip().rstrip("/")
@@ -3123,6 +3124,7 @@ def get_cors_origins():
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_cors_origins(),
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
