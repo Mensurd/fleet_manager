@@ -1,0 +1,124 @@
+{
+  "project_info": {
+    "app_name": "Fleet Manager - APR MENSUR DULJEVIĆ",
+    "company": "APR MENSUR DULJEVIĆ",
+    "language": "Serbian (Latin script)",
+    "currency": "RSD",
+    "type": "Dashboard / ERP Fleet Management",
+    "theme": "Dark Tactical High-Contrast (with theme toggle support)"
+  },
+  "typography": {
+    "heading_font": "Outfit, sans-serif",
+    "body_font": "Inter, sans-serif",
+    "mono_font": "JetBrains Mono, monospace",
+    "hierarchy": {
+      "h1": "text-3xl font-bold tracking-tight text-slate-100 md:text-4xl",
+      "h2": "text-2xl font-semibold tracking-tight text-slate-100",
+      "h3": "text-xl font-semibold text-slate-200",
+      "h4": "text-lg font-medium text-slate-300",
+      "body": "text-sm text-slate-300 leading-relaxed",
+      "small": "text-xs text-slate-400 font-medium",
+      "label": "text-xs uppercase tracking-wider text-slate-400 font-semibold"
+    }
+  },
+  "colors": {
+    "mode": "dark",
+    "background": {
+      "main": "#0B0F17",
+      "card": "#131C2E",
+      "card_hover": "#1C283F",
+      "sidebar": "#080C13",
+      "input": "#1A2438",
+      "border": "#23314A"
+    },
+    "text": {
+      "primary": "#F8FAFC",
+      "secondary": "#94A3B8",
+      "muted": "#64748B",
+      "accent": "#60A5FA"
+    },
+    "alerts": {
+      "expired_red": {
+        "bg": "rgba(239, 68, 68, 0.15)",
+        "border": "#EF4444",
+        "text": "#FCA5A5",
+        "badge": "bg-red-950/80 text-red-300 border-red-500/40",
+        "label": "Isteklo / Hitna obnova"
+      },
+      "expiring_soon_yellow": {
+        "bg": "rgba(245, 158, 11, 0.15)",
+        "border": "#F59E0B",
+        "text": "#FDE047",
+        "badge": "bg-amber-950/80 text-amber-300 border-amber-500/40",
+        "label": "Uskoro ističe (< 30 dana)"
+      },
+      "valid_green": {
+        "bg": "rgba(16, 185, 129, 0.15)",
+        "border": "#10B981",
+        "text": "#6EE7B7",
+        "badge": "bg-emerald-950/80 text-emerald-300 border-emerald-500/40",
+        "label": "Važeće"
+      }
+    },
+    "brand_primary": {
+      "main": "#2563EB",
+      "hover": "#1D4ED8",
+      "light": "#3B82F6",
+      "glow": "rgba(37, 99, 235, 0.25)"
+    }
+  },
+  "layout_and_grids": {
+    "dashboard_grid": "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6",
+    "details_grid": "grid grid-cols-1 lg:grid-cols-3 gap-6",
+    "container_padding": "p-4 sm:p-6 lg:p-8 space-y-6",
+    "border_radius": "rounded-xl",
+    "card_style": "bg-[#131C2E] border border-[#23314A] rounded-xl p-5 shadow-lg shadow-black/20 hover:border-[#3B82F6]/40 transition-all duration-200"
+  },
+  "key_modules": {
+    "login_page": "High density dark tactical login view with JWT auth simulation, company name APR MENSUR DULJEVIĆ, admin role badge, and credential toggles.",
+    "dashboard": "Key metrics summary shelf: Ukupno Vozila, Istekle Dokumentacije (Red Badge), Ističu Uskoro (Yellow Badge), Aktivni Servisi, Ukupni Troškovi Održavanja (RSD). Visual alert table for 6-month inspection, 12-month registration, CMR insurance, Kasko insurance.",
+    "vehicle_list": "Comprehensive table & grid view with quick filters by document status (Crveno, Žuto, Zeleno), registration plate, model, vehicle type, and quick action buttons.",
+    "vehicle_detail": "Individual vehicle view with documentation status cards (6-mesečni tehnički pregled, 12-mesečna registracija, CMR osiguranje, Kasko osiguranje), interactive renewal drawer/modal, and maintenance history timeline.",
+    "maintenance_log": "Evidencija održavanja - detailed logs of repairs, oil changes, tire replacement, parts cost in RSD, mechanic notes, service status, and add new service entry.",
+    "reports_view": "Izveštaji & Štampa - preview formatted official document for APR MENSUR DULJEVIĆ fleet status, print view button (CSS print stylesheet optimized), and Export to Word (.docx) functionality."
+  },
+  "image_urls": [
+    {
+      "category": "hero_banner",
+      "url": "https://images.unsplash.com/photo-1565793298595-6a879b1d9492?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjh8MHwxfHNlYXJjaHwzfHxjb21tZXJjaWFsJTIwdHJ1Y2slMjBmbGVldCUyMGxvZ2lzdGljcyUyMHRyYW5zcG9ydHxlbnwwfHx8fDE3OTAxODE4NzJ8MA&ixlib=rb-4.1.0&q=85",
+      "description": "Truck fleet line up hero image for header/login"
+    },
+    {
+      "category": "vehicle_truck_1",
+      "url": "https://images.unsplash.com/photo-1616432043562-3671ea2e5242?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjh8MHwxfHNlYXJjaHwxfHxjb21tZXJjaWFsJTIwdHJ1Y2slMjBmbGVldCUyMGxvZ2lzdGljcyUyMHRyYW5zcG9ydHxlbnwwfHx8fDE3OTAxODE4NzJ8MA&ixlib=rb-4.1.0&q=85",
+      "description": "Freight truck on highway for truck details"
+    },
+    {
+      "category": "vehicle_truck_2",
+      "url": "https://images.unsplash.com/photo-1695222833131-54ee679ae8e5?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjh8MHwxfHNlYXJjaHwyfHxjb21tZXJjaWFsJTIwdHJ1Y2slMjBmbGVldCUyMGxvZ2lzdGljcyUyMHRyYW5zcG9ydHxlbnwwfHx8fDE3OTAxODE4NzJ8MA&ixlib=rb-4.1.0&q=85",
+      "description": "White semi truck on rural road"
+    }
+  ],
+  "testing_requirements": {
+    "data_testid_policy": "All buttons, inputs, filter options, status badges, rows, and export buttons MUST include kebab-case data-testid attributes.",
+    "examples": [
+      "data-testid=\"login-email-input\"",
+      "data-testid=\"login-password-input\"",
+      "data-testid=\"login-submit-button\"",
+      "data-testid=\"fleet-dashboard-tab\"",
+      "data-testid=\"vehicle-list-search\"",
+      "data-testid=\"filter-status-red\"",
+      "data-testid=\"doc-expiry-badge-6m-inspection\"",
+      "data-testid=\"export-word-report-button\"",
+      "data-testid=\"print-report-button\""
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Ensure language is strictly Serbian Latin script throughout the interface (e.g. Registracija, Tehnički pregled, CMR osiguranje, Kasko osiguranje, Održavanje, Izveštaji, Štampa, Izvoz u Word).",
+    "Display all costs and monetary values in Serbian Dinar (RSD) formatted with Serbian grouping (e.g. 120.000 RSD).",
+    "Incorporate clear red and yellow warning badges on cards, tables, and top alert banners for documents expiring within 30 days (yellow) or already expired (red).",
+    "Provide full Word (.docx) export mechanism and Print view layout optimized with @media print CSS rules.",
+    "Use Lucide React icons for tactical dashboard elements (Truck, AlertTriangle, Shield, Wrench, FileText, Calendar, Printer, Download, CheckCircle, Search, Plus).",
+    "Add toast notifications via Sonner for document renewals, service creation, export confirmation, and login actions."
+  ]
+}

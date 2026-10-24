@@ -1,0 +1,116 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-main: #0B0F17;
+  --bg-card: #131C2E;
+  --bg-card-hover: #1C283F;
+  --bg-sidebar: #080C13;
+  --bg-input: #1A2438;
+  --border-col: #23314A;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', sans-serif;
+  background-color: var(--bg-main);
+  color: #F8FAFC;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, .font-head { font-family: 'Outfit', sans-serif; }
+.font-mono { font-family: 'JetBrains Mono', monospace; }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: #0B0F17; }
+::-webkit-scrollbar-thumb { background: #23314A; border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: #3B4A66; }
+
+::selection { background: rgba(37, 99, 235, 0.4); color: #fff; }
+
+@layer base {
+  :root {
+    --background: 222 40% 6%;
+    --foreground: 210 40% 98%;
+    --card: 220 38% 13%;
+    --card-foreground: 210 40% 98%;
+    --popover: 220 38% 13%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 221 83% 53%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 217 33% 20%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 217 33% 20%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 217 33% 22%;
+    --input: 217 33% 22%;
+    --ring: 221 83% 53%;
+    --radius: 0.75rem;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  body { @apply bg-background text-foreground; }
+}
+
+.animate-fade-up {
+  animation: fadeUp 0.5s ease both;
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media print {
+  body { background: #fff !important; color: #000 !important; }
+  .no-print { display: none !important; }
+  .print-area { display: block !important; color: #000 !important; }
+  .print-area * { color: #000 !important; }
+}
+
+/* ---------------- Light theme ---------------- */
+html.light {
+  --bg-main:#F1F5F9; --bg-card:#FFFFFF; --bg-card-hover:#EEF2F7; --bg-sidebar:#FFFFFF; --bg-input:#FFFFFF; --border-col:#E2E8F0;
+  --background:210 40% 96%; --foreground:222 47% 11%;
+  --card:0 0% 100%; --card-foreground:222 47% 11%;
+  --popover:0 0% 100%; --popover-foreground:222 47% 11%;
+  --secondary:210 40% 94%; --secondary-foreground:222 47% 11%;
+  --muted:210 40% 94%; --muted-foreground:215 16% 40%;
+  --accent:210 40% 94%; --accent-foreground:222 47% 11%;
+  --border:214 32% 88%; --input:214 32% 88%;
+}
+html.light body { background-color:#F1F5F9; color:#0F172A; }
+html.light ::-webkit-scrollbar-track { background:#E2E8F0; }
+html.light ::-webkit-scrollbar-thumb { background:#CBD5E1; }
+html.light ::-webkit-scrollbar-thumb:hover { background:#94A3B8; }
+
+html.light .bg-\[\#0B0F17\] { background-color:#F1F5F9 !important; }
+html.light .bg-\[\#131C2E\] { background-color:#FFFFFF !important; }
+html.light .bg-\[\#1A2438\] { background-color:#FFFFFF !important; }
+html.light .bg-\[\#080C13\] { background-color:#FFFFFF !important; }
+html.light .border-\[\#23314A\] { border-color:#E2E8F0 !important; }
+html.light .border-\[\#23314A\]\/60 { border-color:#E2E8F0 !important; }
+html.light .border-\[\#23314A\]\/50 { border-color:#E2E8F0 !important; }
+html.light .hover\:bg-\[\#1C283F\]:hover { background-color:#EEF2F7 !important; }
+html.light .hover\:bg-\[\#1C283F\]\/40:hover { background-color:#EEF2F7 !important; }
+html.light .hover\:bg-\[\#1C283F\]\/50:hover { background-color:#EEF2F7 !important; }
+html.light .hover\:bg-\[\#131C2E\]:hover { background-color:#EEF2F7 !important; }
+
+html.light .text-white { color:#0F172A !important; }
+html.light .text-slate-100 { color:#0F172A !important; }
+html.light .text-slate-200 { color:#1E293B !important; }
+html.light .text-slate-300 { color:#334155 !important; }
+html.light .text-slate-400 { color:#475569 !important; }
+html.light .text-slate-500 { color:#64748B !important; }
+
+/* Naglašen crveni tekst u svetloj temi za bolju vidljivost */
+html.light [data-testid="settlement-result"] .text-emerald-300 { color:#dc2626 !important; }
+html.light [data-testid="waiting-total"] .text-blue-300 { color:#dc2626 !important; }

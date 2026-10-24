@@ -1,0 +1,8 @@
+crons:
+  - name: doc-reminders
+    description: "Dnevno proverava istek dokumentacije i šalje email podsetnike 30/15/7 dana pre isteka"
+    cron: "0 7 * * *"
+    endpoint: "{{BASE_URL}}/api/cron/reminders"
+    method: POST
+    # Cron endpoints must ack 2xx immediately; enqueue/background the actual work.
+    enabled: true
