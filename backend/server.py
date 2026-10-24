@@ -57,6 +57,12 @@ db = client[db_name]
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
+
+@app.get("/health")
+@api_router.get("/health")
+async def health_check():
+    return {"status": "ok"}
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
