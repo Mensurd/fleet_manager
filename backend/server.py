@@ -58,10 +58,13 @@ app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
 
-@app.get("/health")
-@api_router.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
+@api_router.api_route("/health", methods=["GET", "HEAD"])
+@app.api_route("/", methods=["GET", "HEAD"])
+@api_router.api_route("/", methods=["GET", "HEAD"])
 async def health_check():
     return {"status": "ok"}
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
