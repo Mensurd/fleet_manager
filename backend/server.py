@@ -38,8 +38,17 @@ from docx.shared import Pt, RGBColor, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 # ---------------- DB ----------------
+import certifi
+
 mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
+client_kwargs = {}
+if "mongodb+srv://" in mongo_url or "ssl=true" in mongo_url.lower() or "tls=true" in mongo_url.lower():
+    try:
+        client_kwargs["tlsCAFile"] = certifi.where()
+    except Exception:
+        pass
+
+client = AsyncIOMotorClient(mongo_url, **client_kwargs)
 db = client[os.environ['DB_NAME']]
 
 app = FastAPI()
