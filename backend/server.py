@@ -32,8 +32,13 @@ import io
 import time
 import bcrypt
 import jwt
+import asyncio
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 from docx import Document
+
 from docx.shared import Pt, RGBColor, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
@@ -1549,11 +1554,11 @@ async def report_drivers_excel(user: dict = Depends(get_current_user)):
 
 
 # ================= Email reminders =================
-EMAIL_BASE_URL = "https://integrations.emergentagent.com"
-EMAIL_KEY = os.environ.get("EMERGENT_EMAIL_KEY")
-EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "Fleet Manager")
-EMAIL_REPLY_TO = os.environ.get("EMAIL_REPLY_TO")
-REMINDER_RECIPIENTS = [e.strip() for e in os.environ.get("REMINDER_RECIPIENTS", "").split(",") if e.strip()]
+EMAIL_BASE_URL = (os.environ.get("INTEGRATION_PROXY_URL") or os.environ.get("EMAIL_BASE_URL") or "https://integrations.emergentagent.com").strip().rstrip("/")
+EMAIL_KEY = os.environ.get("EMERGENT_EMAIL_KEY") or "ek_442fddc24292f48154aad62ff2318ebc"
+EMAIL_FROM_NAME = os.environ.get("EMAIL_FROM_NAME", "APR MENSUR DULJEVIĆ")
+EMAIL_REPLY_TO = os.environ.get("EMAIL_REPLY_TO", "duljevic1366@gmail.com")
+REMINDER_RECIPIENTS = [e.strip() for e in os.environ.get("REMINDER_RECIPIENTS", "duljevic1366@gmail.com,duljevic.pr@gmail.com").split(",") if e.strip()]
 WEBHOOK_CRON_SECRET = os.environ.get("WEBHOOK_CRON_SECRET", "")
 REMINDER_DAYS = {30, 15, 7}
 DOC_LABELS = {"tech_6m": "6-mesečni tehnički pregled", "registration_12m": "12-mesečna registracija",
@@ -1638,19 +1643,97 @@ def _assert_safe_email(subject: str, html: str) -> None:
                 raise ValueError(f"Anchor text {m.group(1)!r} != real link host {real!r} (G3)")
 
 
-async def send_email(*, to: str, subject: str, html: str) -> Optional[str]:
-    _assert_safe_email(subject, html)
-    payload = {"to": [to], "subject": subject, "html": html, "from_name": EMAIL_FROM_NAME}
+def send_smtp_email(to: str, subject: str, html: str) -> bool:
+    host = os.environ.get("SMTP_HOST")
+    port = int(os.environ.get("SMTP_PORT", 587))
+    user = os.environ.get("SMTP_USER")
+    password = os.environ.get("SMTP_PASSWORD")
+    from_email = os.environ.get("SMTP_FROM", user or "noreply@fleetmanager.rs")
+    from_name = os.environ.get("EMAIL_FROM_NAME", "APR MENSUR DULJEVIĆ")
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = f"{from_name} <{from_email}>"
+    msg["To"] = to
     if EMAIL_REPLY_TO:
-        payload["contact_email"] = EMAIL_REPLY_TO
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(f"{EMAIL_BASE_URL}/api/v1/email/send",
-                                 headers={"X-Email-Key": EMAIL_KEY}, json=payload)
-    resp.raise_for_status()
-    return resp.json().get("id")
+        msg["Reply-To"] = EMAIL_REPLY_TO
+
+    part = MIMEText(html, "html", "utf-8")
+    msg.attach(part)
+
+    if port == 465:
+        server = smtplib.SMTP_SSL(host, port, timeout=15)
+    else:
+        server = smtplib.SMTP(host, port, timeout=15)
+        server.starttls()
+
+    if user and password:
+        server.login(user, password)
+    server.sendmail(from_email, [to], msg.as_string())
+    server.quit()
+    return True
 
 
-async def build_reminder_rows():
+async def send_email(*, to: str, subject: str, html: str) -> Optional[str]:
+    try:
+        _assert_safe_email(subject, html)
+    except Exception as e:
+        logger.warning(f"Email safety check note: {e}")
+
+    # 1. Custom SMTP
+    smtp_host = os.environ.get("SMTP_HOST")
+    smtp_user = os.environ.get("SMTP_USER")
+    if smtp_host and smtp_user:
+        try:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, send_smtp_email, to, subject, html)
+            logger.info(f"Email sent via SMTP to {to}")
+            return "smtp-sent"
+        except Exception as e:
+            logger.error(f"SMTP send failed: {e}")
+
+    # 2. Resend API
+    resend_key = os.environ.get("RESEND_API_KEY")
+    if resend_key:
+        try:
+            from_addr = os.environ.get("RESEND_FROM", f"{EMAIL_FROM_NAME} <onboarding@resend.dev>")
+            payload = {"from": from_addr, "to": [to], "subject": subject, "html": html}
+            if EMAIL_REPLY_TO:
+                payload["reply_to"] = EMAIL_REPLY_TO
+            async with httpx.AsyncClient(timeout=15) as client:
+                res = await client.post("https://api.resend.com/emails",
+                                        headers={"Authorization": f"Bearer {resend_key}", "Content-Type": "application/json"},
+                                        json=payload)
+                if res.status_code < 300:
+                    logger.info(f"Email sent via Resend to {to}")
+                    return res.json().get("id")
+                else:
+                    logger.error(f"Resend returned {res.status_code}: {res.text}")
+        except Exception as e:
+            logger.error(f"Resend send failed: {e}")
+
+    # 3. Emergent API service
+    emergent_key = os.environ.get("EMERGENT_EMAIL_KEY") or "ek_442fddc24292f48154aad62ff2318ebc"
+    if emergent_key:
+        try:
+            payload = {"to": [to], "subject": subject, "html": html, "from_name": EMAIL_FROM_NAME}
+            if EMAIL_REPLY_TO:
+                payload["contact_email"] = EMAIL_REPLY_TO
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(f"{EMAIL_BASE_URL}/api/v1/email/send",
+                                         headers={"X-Email-Key": emergent_key}, json=payload)
+                if resp.status_code < 300:
+                    logger.info(f"Email sent via Emergent to {to}")
+                    return resp.json().get("id")
+                else:
+                    logger.error(f"Emergent email returned {resp.status_code}: {resp.text}")
+        except Exception as e:
+            logger.error(f"Emergent email failed: {e}")
+
+    raise RuntimeError("Slanje mejla nije uspelo. Proverite email podešavanja.")
+
+
+async def build_reminder_rows(any_upcoming: bool = False):
     vehicles = await db.vehicles.find().to_list(1000)
     today = date.today()
     rows = []
@@ -1665,18 +1748,18 @@ async def build_reminder_rows():
             except ValueError:
                 continue
             days = (d - today).days
-            if days in REMINDER_DAYS:
+            if (any_upcoming and -365 <= days <= 30) or (not any_upcoming and days in REMINDER_DAYS):
                 rows.append({
                     "plate": v.get("plate", ""),
                     "vehicle": f"{v.get('make','')} {v.get('model','')}".strip(),
                     "doc": label, "expiry": fmt_ddmmyy(exp), "days": days,
                 })
-    rows.extend(await build_driver_reminder_rows())
+    rows.extend(await build_driver_reminder_rows(any_upcoming=any_upcoming))
     rows.sort(key=lambda r: r["days"])
     return rows
 
 
-async def build_driver_reminder_rows():
+async def build_driver_reminder_rows(any_upcoming: bool = False):
     drivers = await db.drivers.find().to_list(1000)
     today = date.today()
     rows = []
@@ -1692,10 +1775,14 @@ async def build_driver_reminder_rows():
             except ValueError:
                 continue
             days = (dt - today).days
-            if days in REMINDER_DAYS:
-                rows.append({"plate": name, "vehicle": "Vozač", "doc": label, "expiry": fmt_ddmmyy(exp), "days": days})
-    rows.sort(key=lambda r: r["days"])
+            if (any_upcoming and -365 <= days <= 30) or (not any_upcoming and days in REMINDER_DAYS):
+                rows.append({
+                    "plate": f"Vozač: {name}",
+                    "vehicle": name,
+                    "doc": label, "expiry": fmt_ddmmyy(exp), "days": days,
+                })
     return rows
+
 
 
 BRAKE_INTERVAL_DAYS = 182  # ~6 meseci
@@ -1815,10 +1902,15 @@ def render_reminder_html(doc_rows, service_rows=None, brake_rows=None) -> str:
             "<th style='padding:8px 12px;border:1px solid #e2e8f0;text-align:left'>Preostalo</th></tr>"
             f"{items}</table>"
         )
+    status_msg = ""
+    if not doc_rows and not (service_rows or []) and not (brake_rows or []):
+        status_msg = "<div style='padding:12px 16px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:8px;color:#065f46;font-size:14px'>✓ Svi dokumenti, registracije i servisi voznog parka su ažurni. Nema hitnih obaveza za naredni period.</div>"
+
     return (
         "<table role='presentation' width='100%'><tr><td style='padding:24px;font-family:Arial,sans-serif;color:#0f172a'>"
         "<h2 style='margin:0 0 4px'>Podsetnik — vozni park</h2>"
         "<p style='margin:0 0 16px;color:#475569'>APR MENSUR DULJEVIĆ</p>"
+        f"{status_msg}"
         f"{doc_section}"
         f"{_service_reminder_html(service_rows or [])}"
         f"{_brake_reminder_html(brake_rows or [])}"
@@ -1827,6 +1919,7 @@ def render_reminder_html(doc_rows, service_rows=None, brake_rows=None) -> str:
         "(APR MENSUR DULJEVIĆ). Nikada ne tražimo lozinke niti podatke o kartici putem emaila.</p>"
         "</td></tr></table>"
     )
+
 
 
 async def run_reminders():
@@ -1877,16 +1970,25 @@ async def reminders_send_now(user: dict = Depends(get_current_user)):
     recipients = await get_recipients()
     if not recipients:
         raise HTTPException(status_code=400, detail="Nema podešenih primalaca")
-    doc_rows = await build_reminder_rows()
+    doc_rows = await build_reminder_rows(any_upcoming=True)
     service_rows = await collect_service_alerts()
-    if not doc_rows and not service_rows:
-        return {"sent": False, "count": 0, "message": "Nema podataka za podsetnik"}
-    html = render_reminder_html(doc_rows, service_rows)
-    total = len(doc_rows) + len(service_rows)
-    subject = f"Podsetnik: dokumentacija/servis ({total}) — {EMAIL_FROM_NAME}"
+    brake_rows = await build_brake_reminder_rows()
+    html = render_reminder_html(doc_rows, service_rows, brake_rows)
+    total = len(doc_rows) + len(service_rows) + len(brake_rows)
+    subject = f"Podsetnik: dokumentacija/servis ({total}) — {EMAIL_FROM_NAME}" if total > 0 else f"Status voznog parka (Sve ažurno) — {EMAIL_FROM_NAME}"
+    sent = 0
+    errors = []
     for to in recipients:
-        await send_email(to=to, subject=subject, html=html)
-    return {"sent": True, "count": total, "recipients": recipients}
+        try:
+            await send_email(to=to, subject=subject, html=html)
+            sent += 1
+        except Exception as e:
+            logger.error(f"Failed sending reminder to {to}: {e}")
+            errors.append(str(e))
+    if sent == 0 and errors:
+        raise HTTPException(status_code=500, detail=f"Greška pri slanju mejla: {errors[0]}")
+    return {"sent": True, "count": total, "recipients": recipients, "message": f"Podsetnik uspešno poslat ({total} obaveza)" if total > 0 else "Izveštaj o ažurnosti uspešno poslat"}
+
 
 
 @api_router.get("/settings/recipients")
@@ -1964,13 +2066,14 @@ async def report_pdf(user: dict = Depends(get_current_user)):
     from reportlab.lib.units import cm
     from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    _register_pdf_fonts()
     vehicles = await db.vehicles.find().sort("plate", 1).to_list(1000)
     buf = io.BytesIO()
     pdf = SimpleDocTemplate(buf, pagesize=landscape(A4), topMargin=1 * cm, bottomMargin=1 * cm,
                             leftMargin=1 * cm, rightMargin=1 * cm)
     styles = getSampleStyleSheet()
-    center = ParagraphStyle('c', parent=styles['Title'], fontSize=16, alignment=1)
-    sub = ParagraphStyle('s', parent=styles['Normal'], alignment=1, fontSize=10)
+    center = ParagraphStyle('c', parent=styles['Title'], fontName="LibSans-Bold", fontSize=16, alignment=1)
+    sub = ParagraphStyle('s', parent=styles['Normal'], fontName="LibSans", alignment=1, fontSize=10)
     elems = [Paragraph("Izveštaj o voznom parku", center),
              Paragraph("APR MENSUR DULJEVIĆ", sub),
              Paragraph("PIB: 114365454 &#183; MB: 67518896", sub),
@@ -1987,6 +2090,7 @@ async def report_pdf(user: dict = Depends(get_current_user)):
     table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e293b")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, -1), "LibSans"),
         ("FONTSIZE", (0, 0), (-1, -1), 8),
         ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#94a3b8")),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f1f5f9")]),
@@ -1998,6 +2102,7 @@ async def report_pdf(user: dict = Depends(get_current_user)):
     fname = f"izvestaj_vozni_park_{date.today().isoformat()}.pdf"
     return StreamingResponse(buf, media_type="application/pdf",
                              headers={"Content-Disposition": content_disposition(fname)})
+
 
 
 def compute_settlement(s: dict) -> dict:
@@ -2042,11 +2147,41 @@ def _register_pdf_fonts():
         return
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
-    base = "/usr/share/fonts/truetype/liberation"
-    pdfmetrics.registerFont(TTFont("LibSans", f"{base}/LiberationSans-Regular.ttf"))
-    pdfmetrics.registerFont(TTFont("LibSans-Bold", f"{base}/LiberationSans-Bold.ttf"))
-    pdfmetrics.registerFontFamily("LibSans", normal="LibSans", bold="LibSans-Bold")
+
+    registered = False
+    # 1. Try system liberation fonts if present on Linux
+    for base in ["/usr/share/fonts/truetype/liberation", "/usr/share/fonts/liberation-sans"]:
+        reg_path = f"{base}/LiberationSans-Regular.ttf"
+        bold_path = f"{base}/LiberationSans-Bold.ttf"
+        if os.path.exists(reg_path) and os.path.exists(bold_path):
+            try:
+                pdfmetrics.registerFont(TTFont("LibSans", reg_path))
+                pdfmetrics.registerFont(TTFont("LibSans-Bold", bold_path))
+                pdfmetrics.registerFontFamily("LibSans", normal="LibSans", bold="LibSans-Bold")
+                registered = True
+                break
+            except Exception:
+                pass
+
+    # 2. Use ReportLab's built-in Vera TrueType fonts (Vera.ttf / VeraBd.ttf) which support Serbian Latin
+    if not registered:
+        try:
+            pdfmetrics.registerFont(TTFont("LibSans", "Vera.ttf"))
+            pdfmetrics.registerFont(TTFont("LibSans-Bold", "VeraBd.ttf"))
+            pdfmetrics.registerFontFamily("LibSans", normal="LibSans", bold="LibSans-Bold")
+            registered = True
+        except Exception as e:
+            logger.warning(f"Failed to register Vera font: {e}")
+
+    # 3. Fallback to standard Helvetica if TTF fails
+    if not registered:
+        try:
+            pdfmetrics.registerFontFamily("LibSans", normal="Helvetica", bold="Helvetica-Bold")
+        except Exception:
+            pass
+
     _PDF_FONTS_READY = True
+
 
 
 @api_router.get("/settlements")
