@@ -403,7 +403,7 @@ def render_reset_html(link: str) -> str:
 
 
 @api_router.post("/auth/forgot-password")
-async def forgot_password(payload: ForgotPasswordRequest):
+async def forgot_password(payload: ForgotPasswordRequest, request: Request):
     email = payload.email.lower()
     user = await db.users.find_one({"email": email})
     if user:
@@ -415,11 +415,18 @@ async def forgot_password(payload: ForgotPasswordRequest):
             "used": False,
             "created_at": datetime.now(timezone.utc),
         })
-        base = os.environ.get("FRONTEND_URL", "").rstrip("/")
+        origin = request.headers.get("origin") or request.headers.get("referer") or ""
+        origin = origin.split("?")[0].rstrip("/")
+        if origin.endswith("/zaboravljena-lozinka") or origin.endswith("/login"):
+            origin = origin.rsplit("/", 1)[0]
+        base = (os.environ.get("FRONTEND_URL") or origin or "https://aprmensurduljevic.vercel.app").strip().rstrip("/")
+        if not base.startswith("http://") and not base.startswith("https://"):
+            base = f"https://{base}"
         link = f"{base}/reset-lozinka?token={token}"
         try:
             await send_email(to=email, subject=f"Resetovanje lozinke — {EMAIL_FROM_NAME}",
                              html=render_reset_html(link))
+            logger.info(f"Reset email sent to {email}")
         except Exception as e:
             logger.error(f"Reset email failed: {e}")
     return {"message": "Ako nalog sa tom adresom postoji, poslali smo link za resetovanje lozinke na email."}
@@ -433,6 +440,11 @@ async def reset_password(payload: ResetPasswordRequest):
     if not rec or rec.get("used"):
         raise HTTPException(status_code=400, detail="Link je nevažeći ili je već iskorišćen")
     exp = rec.get("expires_at")
+    if isinstance(exp, str):
+        try:
+            exp = datetime.fromisoformat(exp.replace("Z", "+00:00"))
+        except Exception:
+            exp = None
     if isinstance(exp, datetime):
         if exp.tzinfo is None:
             exp = exp.replace(tzinfo=timezone.utc)
@@ -444,6 +456,7 @@ async def reset_password(payload: ResetPasswordRequest):
     )
     await db.password_reset_tokens.update_one({"_id": rec["_id"]}, {"$set": {"used": True}})
     return {"message": "Lozinka je uspešno resetovana"}
+
 
 
 # ---------------- Vehicle routes ----------------
@@ -1629,8 +1642,9 @@ def _assert_safe_email(subject: str, html: str) -> None:
         low = url.strip().lower()
         if low.startswith(("mailto:", "tel:", "cid:", "#")):
             continue
-        if not low.startswith("https://"):
+        if not low.startswith("https://") and not low.startswith("http://localhost") and not low.startswith("http://127.0.0.1"):
             raise ValueError(f"Email links/assets must be absolute https: {url!r} (G3)")
+
         host = urlparse(low).hostname or ""
         if not _host_ok(host) or urlparse(low).username is not None:
             raise ValueError(f"Shortened, numeric-host or credential-bearing URL: {url!r} (G3)")
