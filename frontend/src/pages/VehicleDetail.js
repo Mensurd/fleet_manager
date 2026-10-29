@@ -44,7 +44,7 @@ const DOC_ICON = {
   tachograph: Gauge,
 };
 
-const emptyM = { date: "", service_type: "", description: "", cost: "", cost_currency: "RSD", odometer: "", mechanic: "", status: "Završeno" };
+const emptyM = { date: "", service_type: "", description: "", cost: "", labor_cost: "", cost_currency: "RSD", ...
 
 export default function VehicleDetail() {
   const { id } = useParams();
