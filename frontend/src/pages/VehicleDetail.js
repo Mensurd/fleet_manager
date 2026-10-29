@@ -910,6 +910,16 @@ export default function VehicleDetail() {
                     <option value="RSD">RSD</option>
                     <option value="EUR">EUR</option>
                   </select>
+                     <div>
+  <label className={labelCls}>Rad</label>
+  <input
+    type="number"
+    className={inputCls}
+    value={mForm.labor_cost || ''}
+    onChange={(e) => setMForm({ ...mForm, labor_cost: e.target.value })}
+    placeholder="Unesi iznos za rad"
+  />
+</div> 
                 </div>
               </div>
               <div>
