@@ -243,12 +243,14 @@ class SettlementUpdate(BaseModel):
 
 
 class MaintenanceCreate(BaseModel):
+   class MaintenanceCreate(BaseModel):
     vehicle_id: str
     date: str
     service_type: str
     description: str = ""
-    cost: float = 0
-    cost_currency: str = "RSD"  # RSD | EUR
+    cost: float = 0         # Trošak delova
+    labor_cost: float = 0   # <--- Trošak za "Rad"
+    cost_currency: str = "RSD"
     odometer: Optional[int] = None
     mechanic: str = ""
     mechanic_cost: float = 0
