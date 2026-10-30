@@ -45,7 +45,7 @@ const DOC_ICON = {
   tachograph: Gauge,
 };
 
-const emptyM = { date: "", service_type: "", description: "", cost: "", mechanic_cost: "", cost_currency: "EUR", odometer: "", mechanic: "", status: "Završeno" };
+const emptyM = { date: "", service_type: "", description: "", cost: "", mechanic_cost: "", cost_currency: "RSD", mechanic_cost_currency: "EUR", odometer: "", mechanic: "", status: "Završeno" };
 
 export default function VehicleDetail() {
   const { id } = useParams();
@@ -54,16 +54,23 @@ export default function VehicleDetail() {
   const [maint, setMaint] = useState([]);
   const { money, rate, currency } = useCurrency();
   const maintEur = (m) => {
-    const tot = (Number(m.cost) || 0) + (Number(m.mechanic_cost) || 0);
-    return m.cost_currency === "EUR" ? tot : tot / (rate || 117);
+    const pCur = m.cost_currency || "RSD";
+    const lCur = m.mechanic_cost_currency || pCur;
+    const pVal = Number(m.cost) || 0;
+    const lVal = Number(m.mechanic_cost) || 0;
+    const pEur = pCur === "EUR" ? pVal : pVal / (rate || 117);
+    const lEur = lCur === "EUR" ? lVal : lVal / (rate || 117);
+    return pEur + lEur;
   };
   const laborEur = (m) => {
+    const lCur = m.mechanic_cost_currency || m.cost_currency || "RSD";
     const v = Number(m.mechanic_cost) || 0;
-    return m.cost_currency === "EUR" ? v : v / (rate || 117);
+    return lCur === "EUR" ? v : v / (rate || 117);
   };
   const partsEur = (m) => {
+    const pCur = m.cost_currency || "RSD";
     const v = Number(m.cost) || 0;
-    return m.cost_currency === "EUR" ? v : v / (rate || 117);
+    return pCur === "EUR" ? v : v / (rate || 117);
   };
   const [editOpen, setEditOpen] = useState(false);
   const [mOpen, setMOpen] = useState(false);
@@ -317,18 +324,19 @@ export default function VehicleDetail() {
     if (!laborModal?.item) return;
     setSavingLabor(true);
     try {
-      const chosenCur = currency || "EUR";
+      const chosenCur = laborModal.cost_currency || "EUR";
       const payload = {
         mechanic_cost: Number(laborModal.mechanic_cost) || 0,
         mechanic: laborModal.mechanic || "",
         cost_currency: chosenCur,
+        mechanic_cost_currency: chosenCur,
       };
       await api.patch(`/maintenance/${laborModal.item.id}/labor`, payload);
       toast.success("Rad mehaničara sačuvan");
       setMaint((prev) =>
         prev.map((m) =>
           m.id === laborModal.item.id
-            ? { ...m, mechanic_cost: payload.mechanic_cost, mechanic: payload.mechanic, cost_currency: chosenCur }
+            ? { ...m, mechanic_cost: payload.mechanic_cost, mechanic: payload.mechanic, mechanic_cost_currency: chosenCur, cost_currency: chosenCur }
             : m
         )
       );
@@ -345,25 +353,26 @@ export default function VehicleDetail() {
     let totalEur = 0;
     const rows = maint
       .map((m) => {
-        const isEur = m.cost_currency === "EUR";
-        const curSuffix = isEur ? " €" : " RSD";
+        const pCur = m.cost_currency || "RSD";
+        const lCur = m.mechanic_cost_currency || pCur;
+        const pSuffix = pCur === "EUR" ? " €" : " RSD";
+        const lSuffix = lCur === "EUR" ? " €" : " RSD";
         const parts = Number(m.cost) || 0;
         const labor = Number(m.mechanic_cost) || 0;
-        const subtotal = parts + labor;
-        if (isEur) {
-          totalEur += subtotal;
-        } else {
-          totalRsd += subtotal;
-        }
+        if (pCur === "EUR") totalEur += parts; else totalRsd += parts;
+        if (lCur === "EUR") totalEur += labor; else totalRsd += labor;
+        const subtotalStr = (pCur === lCur)
+          ? `${(parts + labor).toLocaleString("de-DE")}${pSuffix}`
+          : `${parts > 0 ? parts.toLocaleString("de-DE") + pSuffix : ""}${parts > 0 && labor > 0 ? " + " : ""}${labor > 0 ? labor.toLocaleString("de-DE") + lSuffix : ""}`.trim() || "0 RSD";
         return `<tr>
           <td>${fmtDate(m.date)}</td>
           <td>${m.service_type || ""}</td>
           <td>${m.description || ""}</td>
           <td>${m.odometer || ""}</td>
           <td>${m.mechanic || ""}</td>
-          <td style="text-align:right">${labor > 0 ? labor.toLocaleString("de-DE") + curSuffix : "—"}</td>
-          <td style="text-align:right">${parts > 0 ? parts.toLocaleString("de-DE") + curSuffix : "—"}</td>
-          <td style="text-align:right;font-weight:bold">${subtotal.toLocaleString("de-DE") + curSuffix}</td>
+          <td style="text-align:right">${labor > 0 ? labor.toLocaleString("de-DE") + lSuffix : "—"}</td>
+          <td style="text-align:right">${parts > 0 ? parts.toLocaleString("de-DE") + pSuffix : "—"}</td>
+          <td style="text-align:right;font-weight:bold">${subtotalStr}</td>
         </tr>`;
       })
       .join("");
@@ -431,7 +440,8 @@ export default function VehicleDetail() {
       description: mForm.description,
       cost: Number(mForm.cost) || 0,
       mechanic_cost: Number(mForm.mechanic_cost) || 0,
-      cost_currency: currency || mForm.cost_currency || "EUR",
+      cost_currency: mForm.cost_currency || "RSD",
+      mechanic_cost_currency: mForm.mechanic_cost_currency || mForm.cost_currency || "EUR",
       odometer: mForm.odometer ? Number(mForm.odometer) : null,
       mechanic: mForm.mechanic,
       status: mForm.status,
@@ -468,13 +478,16 @@ export default function VehicleDetail() {
 
   const openEditMaint = (m) => {
     setMEditId(m.id);
+    const pCur = m.cost_currency || "RSD";
+    const lCur = m.mechanic_cost_currency || pCur;
     setMForm({
       date: m.date || "",
       service_type: m.service_type || "",
       description: m.description || "",
       cost: Number(m.cost) > 0 ? String(m.cost) : "",
       mechanic_cost: Number(m.mechanic_cost) > 0 ? String(m.mechanic_cost) : "",
-      cost_currency: currency || "EUR",
+      cost_currency: pCur,
+      mechanic_cost_currency: lCur,
       odometer: m.odometer ?? "",
       mechanic: m.mechanic || "",
       status: m.status || "Završeno",
@@ -839,7 +852,7 @@ export default function VehicleDetail() {
             </button>
             <button
               data-testid="add-maintenance-button"
-              onClick={() => { setMEditId(null); setMForm({ ...emptyM, cost_currency: currency || "EUR" }); setMOpen(true); }}
+              onClick={() => { setMEditId(null); setMForm({ ...emptyM, cost_currency: "RSD", mechanic_cost_currency: "EUR" }); setMOpen(true); }}
               className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg px-3 py-2 text-sm transition-colors"
             >
               <Plus className="h-4 w-4" /> Dodaj servis
@@ -890,11 +903,12 @@ export default function VehicleDetail() {
                         <div>
                           <button
                             onClick={() => {
+                              const lCur = m.mechanic_cost_currency || m.cost_currency || "EUR";
                               setLaborModal({
                                 item: m,
                                 mechanic_cost: Number(m.mechanic_cost) > 0 ? String(m.mechanic_cost) : "",
                                 mechanic: m.mechanic || "",
-                                cost_currency: currency || "EUR",
+                                cost_currency: lCur,
                               });
                             }}
                             className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded transition-colors whitespace-nowrap ${
@@ -1020,32 +1034,56 @@ export default function VehicleDetail() {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
               <div>
-                <label className={`${labelCls} whitespace-nowrap`}>Delovi / materijal ({currency || "EUR"})</label>
-                <input
-                  data-testid="maintenance-cost-input"
-                  type="number"
-                  className={inputCls}
-                  value={mForm.cost}
-                  onChange={(e) => setMForm({ ...mForm, cost: e.target.value })}
-                  placeholder="0"
-                />
+                <label className={`${labelCls} whitespace-nowrap`}>Delovi / materijal</label>
+                <div className="flex gap-1.5 mt-1">
+                  <input
+                    data-testid="maintenance-cost-input"
+                    type="number"
+                    className="w-full bg-[#1A2438] border border-[#23314A] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    value={mForm.cost}
+                    onChange={(e) => setMForm({ ...mForm, cost: e.target.value })}
+                    placeholder="0"
+                  />
+                  <select
+                    data-testid="maintenance-cost-currency"
+                    value={mForm.cost_currency || "RSD"}
+                    onChange={(e) => setMForm({ ...mForm, cost_currency: e.target.value })}
+                    className="bg-[#1A2438] border border-[#23314A] rounded-lg px-2.5 text-sm text-slate-100 focus:outline-none focus:border-blue-500 font-semibold"
+                  >
+                    <option value="RSD">RSD</option>
+                    <option value="EUR">EUR</option>
+                  </select>
+                </div>
               </div>
               <div>
-                <label className={`${labelCls} whitespace-nowrap`}>Rad mehaničara ({currency || "EUR"})</label>
-                <input
-                  data-testid="maintenance-mechanic-cost-input"
-                  type="number"
-                  className={inputCls}
-                  value={mForm.mechanic_cost}
-                  onChange={(e) => setMForm({ ...mForm, mechanic_cost: e.target.value })}
-                  placeholder="0"
-                />
+                <label className={`${labelCls} whitespace-nowrap`}>Rad mehaničara (cena)</label>
+                <div className="flex gap-1.5 mt-1">
+                  <input
+                    data-testid="maintenance-mechanic-cost-input"
+                    type="number"
+                    className="w-full bg-[#1A2438] border border-[#23314A] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    value={mForm.mechanic_cost}
+                    onChange={(e) => setMForm({ ...mForm, mechanic_cost: e.target.value })}
+                    placeholder="0"
+                  />
+                  <select
+                    data-testid="maintenance-mechanic-cost-currency"
+                    value={mForm.mechanic_cost_currency || mForm.cost_currency || "EUR"}
+                    onChange={(e) => setMForm({ ...mForm, mechanic_cost_currency: e.target.value })}
+                    className="bg-[#1A2438] border border-[#23314A] rounded-lg px-2.5 text-sm text-slate-100 focus:outline-none focus:border-blue-500 font-semibold"
+                  >
+                    <option value="EUR">EUR</option>
+                    <option value="RSD">RSD</option>
+                  </select>
+                </div>
               </div>
             </div>
             <div className="bg-[#0B0F17] border border-[#23314A] rounded-lg px-3 py-2 text-xs flex items-center justify-between text-slate-400">
               <span>Ukupan trošak servisa:</span>
               <span className="font-mono text-sm font-semibold text-slate-100">
-                {((Number(mForm.cost) || 0) + (Number(mForm.mechanic_cost) || 0)).toLocaleString("de-DE")} {currency === "EUR" ? "€" : "RSD"}
+                {mForm.cost_currency === (mForm.mechanic_cost_currency || mForm.cost_currency)
+                  ? `${((Number(mForm.cost) || 0) + (Number(mForm.mechanic_cost) || 0)).toLocaleString("de-DE")} ${mForm.cost_currency}`
+                  : `${Number(mForm.cost) > 0 ? `${Number(mForm.cost).toLocaleString("de-DE")} ${mForm.cost_currency}` : ""}${Number(mForm.cost) > 0 && Number(mForm.mechanic_cost) > 0 ? " + " : ""}${Number(mForm.mechanic_cost) > 0 ? `${Number(mForm.mechanic_cost).toLocaleString("de-DE")} ${mForm.mechanic_cost_currency}` : ""}`.trim() || `0 ${mForm.cost_currency}`}
               </span>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -1118,21 +1156,32 @@ export default function VehicleDetail() {
                 <div>
                   <span className="text-slate-500">Delovi/materijal:</span>{" "}
                   {Number(laborModal.item.cost) > 0
-                    ? `${Number(laborModal.item.cost).toLocaleString("de-DE")} ${laborModal.item.cost_currency || currency}`
-                    : `0 ${currency}`}
+                    ? `${Number(laborModal.item.cost).toLocaleString("de-DE")} ${laborModal.item.cost_currency || "RSD"}`
+                    : "0 RSD"}
                 </div>
               </div>
               <div>
-                <label className={labelCls}>Cena rada mehaničara ({currency || "EUR"}) *</label>
-                <input
-                  type="number"
-                  autoFocus
-                  className={inputCls}
-                  value={laborModal.mechanic_cost}
-                  onChange={(e) => setLaborModal({ ...laborModal, mechanic_cost: e.target.value })}
-                  placeholder="0"
-                  data-testid="quick-mechanic-cost-input"
-                />
+                <label className={labelCls}>Cena rada mehaničara *</label>
+                <div className="flex gap-1.5 mt-1">
+                  <input
+                    type="number"
+                    autoFocus
+                    className="w-full bg-[#1A2438] border border-[#23314A] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    value={laborModal.mechanic_cost}
+                    onChange={(e) => setLaborModal({ ...laborModal, mechanic_cost: e.target.value })}
+                    placeholder="0"
+                    data-testid="quick-mechanic-cost-input"
+                  />
+                  <select
+                    value={laborModal.cost_currency || "EUR"}
+                    onChange={(e) => setLaborModal({ ...laborModal, cost_currency: e.target.value })}
+                    className="bg-[#1A2438] border border-[#23314A] rounded-lg px-2.5 text-sm text-slate-100 focus:outline-none focus:border-blue-500 font-semibold"
+                    data-testid="quick-mechanic-currency-select"
+                  >
+                    <option value="EUR">EUR</option>
+                    <option value="RSD">RSD</option>
+                  </select>
+                </div>
               </div>
               <div>
                 <label className={labelCls}>Mehaničar / Servis</label>
@@ -1147,7 +1196,9 @@ export default function VehicleDetail() {
               <div className="bg-[#0B0F17] border border-[#23314A] rounded-lg px-3 py-2 text-xs flex items-center justify-between text-slate-400">
                 <span>Novi ukupan trošak:</span>
                 <span className="font-mono text-sm font-semibold text-emerald-400">
-                  {((Number(laborModal.item.cost) || 0) + (Number(laborModal.mechanic_cost) || 0)).toLocaleString("de-DE")} {currency === "EUR" ? "€" : "RSD"}
+                  {((laborModal.item.cost_currency || "RSD") === (laborModal.cost_currency || "EUR"))
+                    ? `${((Number(laborModal.item.cost) || 0) + (Number(laborModal.mechanic_cost) || 0)).toLocaleString("de-DE")} ${laborModal.cost_currency || "EUR"}`
+                    : `${Number(laborModal.item.cost) > 0 ? `${Number(laborModal.item.cost).toLocaleString("de-DE")} ${laborModal.item.cost_currency || "RSD"} + ` : ""}${Number(laborModal.mechanic_cost) || 0} ${laborModal.cost_currency || "EUR"}`}
                 </span>
               </div>
               <DialogFooter className="mt-4">

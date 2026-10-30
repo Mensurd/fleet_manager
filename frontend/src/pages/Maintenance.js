@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 
-const emptyM = { vehicle_id: "", date: "", service_type: "", description: "", cost: "", mechanic_cost: "", cost_currency: "EUR", odometer: "", mechanic: "", status: "Završeno" };
+const emptyM = { vehicle_id: "", date: "", service_type: "", description: "", cost: "", mechanic_cost: "", cost_currency: "RSD", mechanic_cost_currency: "EUR", odometer: "", mechanic: "", status: "Završeno" };
 
 export default function Maintenance() {
   const [vehicles, setVehicles] = useState([]);
@@ -71,7 +71,8 @@ export default function Maintenance() {
       description: form.description,
       cost: Number(form.cost) || 0,
       mechanic_cost: Number(form.mechanic_cost) || 0,
-      cost_currency: currency || "EUR",
+      cost_currency: form.cost_currency || "RSD",
+      mechanic_cost_currency: form.mechanic_cost_currency || form.cost_currency || "EUR",
       odometer: form.odometer ? Number(form.odometer) : null,
       mechanic: form.mechanic,
       status: form.status,
@@ -108,6 +109,8 @@ export default function Maintenance() {
 
   const openEdit = (m) => {
     setEditing(m.id);
+    const pCur = m.cost_currency || "RSD";
+    const lCur = m.mechanic_cost_currency || pCur;
     setForm({
       vehicle_id: m.vehicle_id,
       date: m.date || "",
@@ -115,7 +118,8 @@ export default function Maintenance() {
       description: m.description || "",
       cost: Number(m.cost) > 0 ? String(m.cost) : "",
       mechanic_cost: Number(m.mechanic_cost) > 0 ? String(m.mechanic_cost) : "",
-      cost_currency: currency || "EUR",
+      cost_currency: pCur,
+      mechanic_cost_currency: lCur,
       odometer: m.odometer ?? "",
       mechanic: m.mechanic || "",
       status: m.status || "Završeno",
@@ -128,18 +132,19 @@ export default function Maintenance() {
     if (!laborModal?.item) return;
     setSavingLabor(true);
     try {
-      const chosenCur = currency || "EUR";
+      const chosenCur = laborModal.cost_currency || "EUR";
       const payload = {
         mechanic_cost: Number(laborModal.mechanic_cost) || 0,
         mechanic: laborModal.mechanic || "",
         cost_currency: chosenCur,
+        mechanic_cost_currency: chosenCur,
       };
       await api.patch(`/maintenance/${laborModal.item.id}/labor`, payload);
       toast.success("Rad mehaničara sačuvan");
       setItems((prev) =>
         prev.map((m) =>
           m.id === laborModal.item.id
-            ? { ...m, mechanic_cost: payload.mechanic_cost, mechanic: payload.mechanic, cost_currency: chosenCur }
+            ? { ...m, mechanic_cost: payload.mechanic_cost, mechanic: payload.mechanic, mechanic_cost_currency: chosenCur, cost_currency: chosenCur }
             : m
         )
       );
@@ -166,17 +171,24 @@ export default function Maintenance() {
   }, [items, q, vehicles]);
 
   const toEur = (m) => {
-    const tot = (Number(m.cost) || 0) + (Number(m.mechanic_cost) || 0);
-    return m.cost_currency === "EUR" ? tot : tot / (rate || 117);
+    const pCur = m.cost_currency || "RSD";
+    const lCur = m.mechanic_cost_currency || pCur;
+    const pVal = Number(m.cost) || 0;
+    const lVal = Number(m.mechanic_cost) || 0;
+    const pEur = pCur === "EUR" ? pVal : pVal / (rate || 117);
+    const lEur = lCur === "EUR" ? lVal : lVal / (rate || 117);
+    return pEur + lEur;
   };
   const costLbl = (m) => money(toEur(m));
   const laborEur = (m) => {
+    const lCur = m.mechanic_cost_currency || m.cost_currency || "RSD";
     const v = Number(m.mechanic_cost) || 0;
-    return m.cost_currency === "EUR" ? v : v / (rate || 117);
+    return lCur === "EUR" ? v : v / (rate || 117);
   };
   const partsEur = (m) => {
+    const pCur = m.cost_currency || "RSD";
     const v = Number(m.cost) || 0;
-    return m.cost_currency === "EUR" ? v : v / (rate || 117);
+    return pCur === "EUR" ? v : v / (rate || 117);
   };
   const totalEur = filtered.reduce((s, m) => s + toEur(m), 0);
   const inputCls =
@@ -194,7 +206,7 @@ export default function Maintenance() {
         </div>
         <button
           data-testid="add-maintenance-global-button"
-          onClick={() => { setEditing(null); setForm({ ...emptyM, cost_currency: currency || "EUR" }); setOpen(true); }}
+          onClick={() => { setEditing(null); setForm({ ...emptyM, cost_currency: "RSD", mechanic_cost_currency: "EUR" }); setOpen(true); }}
           className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
         >
           <Plus className="h-4 w-4" /> Novi servis
@@ -264,11 +276,12 @@ export default function Maintenance() {
                         <div>
                           <button
                             onClick={() => {
+                              const lCur = m.mechanic_cost_currency || m.cost_currency || "EUR";
                               setLaborModal({
                                 item: m,
                                 mechanic_cost: Number(m.mechanic_cost) > 0 ? String(m.mechanic_cost) : "",
                                 mechanic: m.mechanic || "",
-                                cost_currency: currency || "EUR",
+                                cost_currency: lCur,
                               });
                             }}
                             className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded transition-colors whitespace-nowrap ${
@@ -373,32 +386,56 @@ export default function Maintenance() {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
               <div>
-                <label className={`${labelCls} whitespace-nowrap`}>Delovi / materijal ({currency || "EUR"})</label>
-                <input
-                  data-testid="gm-cost"
-                  type="number"
-                  className={inputCls}
-                  value={form.cost}
-                  onChange={(e) => setForm({ ...form, cost: e.target.value })}
-                  placeholder="0"
-                />
+                <label className={`${labelCls} whitespace-nowrap`}>Delovi / materijal</label>
+                <div className="flex gap-1.5 mt-1">
+                  <input
+                    data-testid="gm-cost"
+                    type="number"
+                    className="w-full bg-[#1A2438] border border-[#23314A] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    value={form.cost}
+                    onChange={(e) => setForm({ ...form, cost: e.target.value })}
+                    placeholder="0"
+                  />
+                  <select
+                    data-testid="gm-cost-currency"
+                    value={form.cost_currency || "RSD"}
+                    onChange={(e) => setForm({ ...form, cost_currency: e.target.value })}
+                    className="bg-[#1A2438] border border-[#23314A] rounded-lg px-2.5 text-sm text-slate-100 focus:outline-none focus:border-blue-500 font-semibold"
+                  >
+                    <option value="RSD">RSD</option>
+                    <option value="EUR">EUR</option>
+                  </select>
+                </div>
               </div>
               <div>
-                <label className={`${labelCls} whitespace-nowrap`}>Rad mehaničara ({currency || "EUR"})</label>
-                <input
-                  data-testid="gm-mechanic-cost"
-                  type="number"
-                  className={inputCls}
-                  value={form.mechanic_cost}
-                  onChange={(e) => setForm({ ...form, mechanic_cost: e.target.value })}
-                  placeholder="0"
-                />
+                <label className={`${labelCls} whitespace-nowrap`}>Rad mehaničara (cena)</label>
+                <div className="flex gap-1.5 mt-1">
+                  <input
+                    data-testid="gm-mechanic-cost"
+                    type="number"
+                    className="w-full bg-[#1A2438] border border-[#23314A] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    value={form.mechanic_cost}
+                    onChange={(e) => setForm({ ...form, mechanic_cost: e.target.value })}
+                    placeholder="0"
+                  />
+                  <select
+                    data-testid="gm-mechanic-cost-currency"
+                    value={form.mechanic_cost_currency || form.cost_currency || "EUR"}
+                    onChange={(e) => setForm({ ...form, mechanic_cost_currency: e.target.value })}
+                    className="bg-[#1A2438] border border-[#23314A] rounded-lg px-2.5 text-sm text-slate-100 focus:outline-none focus:border-blue-500 font-semibold"
+                  >
+                    <option value="EUR">EUR</option>
+                    <option value="RSD">RSD</option>
+                  </select>
+                </div>
               </div>
             </div>
             <div className="bg-[#0B0F17] border border-[#23314A] rounded-lg px-3 py-2 text-xs flex items-center justify-between text-slate-400">
               <span>Ukupan trošak servisa:</span>
               <span className="font-mono text-sm font-semibold text-slate-100">
-                {((Number(form.cost) || 0) + (Number(form.mechanic_cost) || 0)).toLocaleString("de-DE")} {currency === "EUR" ? "€" : "RSD"}
+                {form.cost_currency === (form.mechanic_cost_currency || form.cost_currency)
+                  ? `${((Number(form.cost) || 0) + (Number(form.mechanic_cost) || 0)).toLocaleString("de-DE")} ${form.cost_currency}`
+                  : `${Number(form.cost) > 0 ? `${Number(form.cost).toLocaleString("de-DE")} ${form.cost_currency}` : ""}${Number(form.cost) > 0 && Number(form.mechanic_cost) > 0 ? " + " : ""}${Number(form.mechanic_cost) > 0 ? `${Number(form.mechanic_cost).toLocaleString("de-DE")} ${form.mechanic_cost_currency}` : ""}`.trim() || `0 ${form.cost_currency}`}
               </span>
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -444,21 +481,32 @@ export default function Maintenance() {
                 <div>
                   <span className="text-slate-500">Delovi/materijal:</span>{" "}
                   {Number(laborModal.item.cost) > 0
-                    ? `${Number(laborModal.item.cost).toLocaleString("de-DE")} ${laborModal.item.cost_currency || currency}`
-                    : `0 ${currency}`}
+                    ? `${Number(laborModal.item.cost).toLocaleString("de-DE")} ${laborModal.item.cost_currency || "RSD"}`
+                    : "0 RSD"}
                 </div>
               </div>
               <div>
-                <label className={labelCls}>Cena rada mehaničara ({currency || "EUR"}) *</label>
-                <input
-                  type="number"
-                  autoFocus
-                  className={inputCls}
-                  value={laborModal.mechanic_cost}
-                  onChange={(e) => setLaborModal({ ...laborModal, mechanic_cost: e.target.value })}
-                  placeholder="0"
-                  data-testid="quick-mechanic-cost-input"
-                />
+                <label className={labelCls}>Cena rada mehaničara *</label>
+                <div className="flex gap-1.5 mt-1">
+                  <input
+                    type="number"
+                    autoFocus
+                    className="w-full bg-[#1A2438] border border-[#23314A] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    value={laborModal.mechanic_cost}
+                    onChange={(e) => setLaborModal({ ...laborModal, mechanic_cost: e.target.value })}
+                    placeholder="0"
+                    data-testid="quick-mechanic-cost-input"
+                  />
+                  <select
+                    value={laborModal.cost_currency || "EUR"}
+                    onChange={(e) => setLaborModal({ ...laborModal, cost_currency: e.target.value })}
+                    className="bg-[#1A2438] border border-[#23314A] rounded-lg px-2.5 text-sm text-slate-100 focus:outline-none focus:border-blue-500 font-semibold"
+                    data-testid="quick-mechanic-currency-select"
+                  >
+                    <option value="EUR">EUR</option>
+                    <option value="RSD">RSD</option>
+                  </select>
+                </div>
               </div>
               <div>
                 <label className={labelCls}>Mehaničar / Servis</label>
@@ -473,7 +521,9 @@ export default function Maintenance() {
               <div className="bg-[#0B0F17] border border-[#23314A] rounded-lg px-3 py-2 text-xs flex items-center justify-between text-slate-400">
                 <span>Novi ukupan trošak:</span>
                 <span className="font-mono text-sm font-semibold text-emerald-400">
-                  {((Number(laborModal.item.cost) || 0) + (Number(laborModal.mechanic_cost) || 0)).toLocaleString("de-DE")} {currency === "EUR" ? "€" : "RSD"}
+                  {((laborModal.item.cost_currency || "RSD") === (laborModal.cost_currency || "EUR"))
+                    ? `${((Number(laborModal.item.cost) || 0) + (Number(laborModal.mechanic_cost) || 0)).toLocaleString("de-DE")} ${laborModal.cost_currency || "EUR"}`
+                    : `${Number(laborModal.item.cost) > 0 ? `${Number(laborModal.item.cost).toLocaleString("de-DE")} ${laborModal.item.cost_currency || "RSD"} + ` : ""}${Number(laborModal.mechanic_cost) || 0} ${laborModal.cost_currency || "EUR"}`}
                 </span>
               </div>
               <DialogFooter className="mt-4">

@@ -250,6 +250,7 @@ class MaintenanceCreate(BaseModel):
     cost: float = 0         # Trošak delova
     labor_cost: float = 0   # <--- Trošak za "Rad"
     cost_currency: str = "RSD"
+    mechanic_cost_currency: Optional[str] = "EUR"
     odometer: Optional[int] = None
     mechanic: str = ""
     mechanic_cost: float = 0
@@ -260,6 +261,7 @@ class MechanicLaborUpdate(BaseModel):
     mechanic_cost: float = 0
     mechanic: Optional[str] = None
     cost_currency: Optional[str] = None
+    mechanic_cost_currency: Optional[str] = None
 
 
 class RecipientsUpdate(BaseModel):
@@ -931,8 +933,10 @@ async def update_maintenance_labor(item_id: str, payload: MechanicLaborUpdate, u
     update_fields = {"mechanic_cost": float(payload.mechanic_cost)}
     if payload.mechanic is not None:
         update_fields["mechanic"] = payload.mechanic
-    if payload.cost_currency is not None:
-        update_fields["cost_currency"] = payload.cost_currency
+    cur = payload.mechanic_cost_currency or payload.cost_currency
+    if cur is not None:
+        update_fields["mechanic_cost_currency"] = cur
+        update_fields["cost_currency"] = cur
     await db.maintenance.update_one({"_id": ObjectId(item_id)}, {"$set": update_fields})
     updated = await db.maintenance.find_one({"_id": ObjectId(item_id)})
     if not updated:
@@ -1196,22 +1200,32 @@ async def report_word(user: dict = Depends(get_current_user)):
     total_rsd = 0.0
     total_eur = 0.0
     for m in sorted(maint, key=lambda x: x.get("date", ""), reverse=True):
-        cur = m.get("cost_currency") or "RSD"
+        p_cur = m.get("cost_currency") or "RSD"
+        l_cur = m.get("mechanic_cost_currency") or p_cur
         parts = float(m.get("cost", 0) or 0)
         labor = float(m.get("mechanic_cost", 0) or 0)
-        subtotal = parts + labor
-        if cur == "EUR":
-            total_eur += subtotal
+        if p_cur == "EUR":
+            total_eur += parts
         else:
-            total_rsd += subtotal
+            total_rsd += parts
+        if l_cur == "EUR":
+            total_eur += labor
+        else:
+            total_rsd += labor
+        if p_cur == l_cur:
+            subtotal_str = _fmt_money(parts + labor, p_cur)
+        else:
+            parts_str = _fmt_money(parts, p_cur) if parts else ""
+            labor_str = _fmt_money(labor, l_cur) if labor else ""
+            subtotal_str = f"{parts_str} + {labor_str}".strip(" +") or "0 RSD"
         r = mtable.add_row().cells
         r[0].text = m.get("date", "")
         r[1].text = plate_by_id.get(m.get("vehicle_id", ""), "")
         r[2].text = m.get("service_type", "")
         r[3].text = m.get("description", "")
-        r[4].text = _fmt_money(labor, cur) if labor else "-"
-        r[5].text = _fmt_money(parts, cur) if parts else "-"
-        r[6].text = _fmt_money(subtotal, cur)
+        r[4].text = _fmt_money(labor, l_cur) if labor else "-"
+        r[5].text = _fmt_money(parts, p_cur) if parts else "-"
+        r[6].text = subtotal_str
     tp = document.add_paragraph()
     if total_eur > 0 and total_rsd > 0:
         tot_str = f"{_fmt_money(total_rsd, 'RSD')} + {_fmt_money(total_eur, 'EUR')}"
@@ -1519,23 +1533,33 @@ async def report_word_vehicle(vehicle_id: str, user: dict = Depends(get_current_
     total_rsd = 0.0
     total_eur = 0.0
     for m in maint:
-        cur = m.get("cost_currency") or "RSD"
+        p_cur = m.get("cost_currency") or "RSD"
+        l_cur = m.get("mechanic_cost_currency") or p_cur
         parts = float(m.get("cost", 0) or 0)
         labor = float(m.get("mechanic_cost", 0) or 0)
-        subtotal = parts + labor
-        if cur == "EUR":
-            total_eur += subtotal
+        if p_cur == "EUR":
+            total_eur += parts
         else:
-            total_rsd += subtotal
+            total_rsd += parts
+        if l_cur == "EUR":
+            total_eur += labor
+        else:
+            total_rsd += labor
+        if p_cur == l_cur:
+            subtotal_str = _fmt_money(parts + labor, p_cur)
+        else:
+            parts_str = _fmt_money(parts, p_cur) if parts else ""
+            labor_str = _fmt_money(labor, l_cur) if labor else ""
+            subtotal_str = f"{parts_str} + {labor_str}".strip(" +") or "0 RSD"
         r = mtable.add_row().cells
         r[0].text = m.get("date", "")
         r[1].text = m.get("service_type", "")
         r[2].text = m.get("description", "")
         r[3].text = str(m.get("odometer") or "")
         r[4].text = m.get("mechanic", "")
-        r[5].text = _fmt_money(labor, cur) if labor else "-"
-        r[6].text = _fmt_money(parts, cur) if parts else "-"
-        r[7].text = _fmt_money(subtotal, cur)
+        r[5].text = _fmt_money(labor, l_cur) if labor else "-"
+        r[6].text = _fmt_money(parts, p_cur) if parts else "-"
+        r[7].text = subtotal_str
     tp = document.add_paragraph()
     if total_eur > 0 and total_rsd > 0:
         tot_str = f"{_fmt_money(total_rsd, 'RSD')} + {_fmt_money(total_eur, 'EUR')}"
@@ -2830,7 +2854,9 @@ def _normalize_amounts(items, rsd_rate):
 def maint_eur(m: dict, rsd_rate: float) -> float:
     parts = float(m.get("cost", 0) or 0)
     labor = float(m.get("mechanic_cost", 0) or 0)
-    return to_eur(parts + labor, m.get("cost_currency") or "RSD", None, rsd_rate)
+    p_cur = m.get("cost_currency") or "RSD"
+    l_cur = m.get("mechanic_cost_currency") or p_cur
+    return to_eur(parts, p_cur, None, rsd_rate) + to_eur(labor, l_cur, None, rsd_rate)
 
 
 class DriverAccountCreate(BaseModel):
