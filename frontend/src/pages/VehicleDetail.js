@@ -45,7 +45,7 @@ const DOC_ICON = {
   tachograph: Gauge,
 };
 
-const emptyM = { date: "", service_type: "", description: "", cost: "", mechanic_cost: "", cost_currency: "RSD", mechanic_cost_currency: "EUR", odometer: "", mechanic: "", status: "Završeno" };
+const emptyM = { date: "", service_type: "", description: "", cost: "", mechanic_cost: "", cost_currency: "EUR", mechanic_cost_currency: "EUR", odometer: "", mechanic: "", status: "Završeno" };
 
 export default function VehicleDetail() {
   const { id } = useParams();
@@ -478,16 +478,15 @@ export default function VehicleDetail() {
 
   const openEditMaint = (m) => {
     setMEditId(m.id);
-    const pCur = m.cost_currency || "RSD";
-    const lCur = m.mechanic_cost_currency || pCur;
+    const cur = m.cost_currency || m.mechanic_cost_currency || "EUR";
     setMForm({
       date: m.date || "",
       service_type: m.service_type || "",
       description: m.description || "",
       cost: Number(m.cost) > 0 ? String(m.cost) : "",
       mechanic_cost: Number(m.mechanic_cost) > 0 ? String(m.mechanic_cost) : "",
-      cost_currency: pCur,
-      mechanic_cost_currency: lCur,
+      cost_currency: cur,
+      mechanic_cost_currency: cur,
       odometer: m.odometer ?? "",
       mechanic: m.mechanic || "",
       status: m.status || "Završeno",
@@ -852,7 +851,7 @@ export default function VehicleDetail() {
             </button>
             <button
               data-testid="add-maintenance-button"
-              onClick={() => { setMEditId(null); setMForm({ ...emptyM, cost_currency: "RSD", mechanic_cost_currency: "EUR" }); setMOpen(true); }}
+              onClick={() => { setMEditId(null); setMForm({ ...emptyM, cost_currency: currency || "EUR", mechanic_cost_currency: currency || "EUR" }); setMOpen(true); }}
               className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg px-3 py-2 text-sm transition-colors"
             >
               <Plus className="h-4 w-4" /> Dodaj servis
@@ -1046,12 +1045,12 @@ export default function VehicleDetail() {
                   />
                   <select
                     data-testid="maintenance-cost-currency"
-                    value={mForm.cost_currency || "RSD"}
-                    onChange={(e) => setMForm({ ...mForm, cost_currency: e.target.value })}
+                    value={mForm.cost_currency || "EUR"}
+                    onChange={(e) => setMForm({ ...mForm, cost_currency: e.target.value, mechanic_cost_currency: e.target.value })}
                     className="bg-[#1A2438] border border-[#23314A] rounded-lg px-2.5 text-sm text-slate-100 focus:outline-none focus:border-blue-500 font-semibold"
                   >
-                    <option value="RSD">RSD</option>
                     <option value="EUR">EUR</option>
+                    <option value="RSD">RSD</option>
                   </select>
                 </div>
               </div>
@@ -1068,8 +1067,8 @@ export default function VehicleDetail() {
                   />
                   <select
                     data-testid="maintenance-mechanic-cost-currency"
-                    value={mForm.mechanic_cost_currency || mForm.cost_currency || "EUR"}
-                    onChange={(e) => setMForm({ ...mForm, mechanic_cost_currency: e.target.value })}
+                    value={mForm.cost_currency || "EUR"}
+                    onChange={(e) => setMForm({ ...mForm, cost_currency: e.target.value, mechanic_cost_currency: e.target.value })}
                     className="bg-[#1A2438] border border-[#23314A] rounded-lg px-2.5 text-sm text-slate-100 focus:outline-none focus:border-blue-500 font-semibold"
                   >
                     <option value="EUR">EUR</option>
