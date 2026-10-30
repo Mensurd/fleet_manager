@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 
-const emptyM = { vehicle_id: "", date: "", service_type: "", description: "", cost: "", mechanic_cost: "", cost_currency: "EUR", mechanic_cost_currency: "EUR", odometer: "", mechanic: "", status: "Završeno" };
+const emptyM = { vehicle_id: "", date: "", service_type: "", description: "", cost: "", mechanic_cost: "", cost_currency: "RSD", mechanic_cost_currency: "EUR", odometer: "", mechanic: "", status: "Završeno" };
 
 export default function Maintenance() {
   const [vehicles, setVehicles] = useState([]);
@@ -109,7 +109,8 @@ export default function Maintenance() {
 
   const openEdit = (m) => {
     setEditing(m.id);
-    const cur = m.cost_currency || m.mechanic_cost_currency || "EUR";
+    const pCur = m.cost_currency || "RSD";
+    const lCur = m.mechanic_cost_currency || pCur;
     setForm({
       vehicle_id: m.vehicle_id,
       date: m.date || "",
@@ -117,8 +118,8 @@ export default function Maintenance() {
       description: m.description || "",
       cost: Number(m.cost) > 0 ? String(m.cost) : "",
       mechanic_cost: Number(m.mechanic_cost) > 0 ? String(m.mechanic_cost) : "",
-      cost_currency: cur,
-      mechanic_cost_currency: cur,
+      cost_currency: pCur,
+      mechanic_cost_currency: lCur,
       odometer: m.odometer ?? "",
       mechanic: m.mechanic || "",
       status: m.status || "Završeno",
@@ -205,7 +206,7 @@ export default function Maintenance() {
         </div>
         <button
           data-testid="add-maintenance-global-button"
-          onClick={() => { setEditing(null); setForm({ ...emptyM, cost_currency: currency || "EUR", mechanic_cost_currency: currency || "EUR" }); setOpen(true); }}
+          onClick={() => { setEditing(null); setForm({ ...emptyM, cost_currency: "RSD", mechanic_cost_currency: "EUR" }); setOpen(true); }}
           className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg px-4 py-2.5 text-sm transition-colors"
         >
           <Plus className="h-4 w-4" /> Novi servis
@@ -397,12 +398,12 @@ export default function Maintenance() {
                   />
                   <select
                     data-testid="gm-cost-currency"
-                    value={form.cost_currency || "EUR"}
-                    onChange={(e) => setForm({ ...form, cost_currency: e.target.value, mechanic_cost_currency: e.target.value })}
+                    value={form.cost_currency || "RSD"}
+                    onChange={(e) => setForm({ ...form, cost_currency: e.target.value })}
                     className="bg-[#1A2438] border border-[#23314A] rounded-lg px-2.5 text-sm text-slate-100 focus:outline-none focus:border-blue-500 font-semibold"
                   >
-                    <option value="EUR">EUR</option>
                     <option value="RSD">RSD</option>
+                    <option value="EUR">EUR</option>
                   </select>
                 </div>
               </div>
@@ -419,8 +420,8 @@ export default function Maintenance() {
                   />
                   <select
                     data-testid="gm-mechanic-cost-currency"
-                    value={form.cost_currency || "EUR"}
-                    onChange={(e) => setForm({ ...form, cost_currency: e.target.value, mechanic_cost_currency: e.target.value })}
+                    value={form.mechanic_cost_currency || form.cost_currency || "EUR"}
+                    onChange={(e) => setForm({ ...form, mechanic_cost_currency: e.target.value })}
                     className="bg-[#1A2438] border border-[#23314A] rounded-lg px-2.5 text-sm text-slate-100 focus:outline-none focus:border-blue-500 font-semibold"
                   >
                     <option value="EUR">EUR</option>
