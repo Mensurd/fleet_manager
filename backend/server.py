@@ -243,7 +243,6 @@ class SettlementUpdate(BaseModel):
 
 
 class MaintenanceCreate(BaseModel):
-   class MaintenanceCreate(BaseModel):
     vehicle_id: str
     date: str
     service_type: str
