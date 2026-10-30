@@ -31,6 +31,17 @@ h1, h2, h3, h4, .font-head { font-family: 'Outfit', sans-serif; }
 
 ::selection { background: rgba(37, 99, 235, 0.4); color: #fff; }
 
+/* Uklanjanje strelica sa number input polja */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none !important;
+  margin: 0 !important;
+}
+input[type="number"] {
+  -moz-appearance: textfield !important;
+  appearance: textfield !important;
+}
+
 @layer base {
   :root {
     --background: 222 40% 6%;

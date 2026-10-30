@@ -251,7 +251,14 @@ class MaintenanceCreate(BaseModel):
     cost_currency: str = "RSD"  # RSD | EUR
     odometer: Optional[int] = None
     mechanic: str = ""
+    mechanic_cost: float = 0
     status: str = "Završeno"
+
+
+class MechanicLaborUpdate(BaseModel):
+    mechanic_cost: float = 0
+    mechanic: Optional[str] = None
+    cost_currency: Optional[str] = None
 
 
 class RecipientsUpdate(BaseModel):
@@ -918,6 +925,22 @@ async def update_maintenance(item_id: str, payload: MaintenanceCreate, user: dic
     return updated
 
 
+@api_router.patch("/maintenance/{item_id}/labor")
+async def update_maintenance_labor(item_id: str, payload: MechanicLaborUpdate, user: dict = Depends(get_current_user)):
+    update_fields = {"mechanic_cost": float(payload.mechanic_cost)}
+    if payload.mechanic is not None:
+        update_fields["mechanic"] = payload.mechanic
+    if payload.cost_currency is not None:
+        update_fields["cost_currency"] = payload.cost_currency
+    await db.maintenance.update_one({"_id": ObjectId(item_id)}, {"$set": update_fields})
+    updated = await db.maintenance.find_one({"_id": ObjectId(item_id)})
+    if not updated:
+        raise HTTPException(status_code=404, detail="Zapis nije pronađen")
+    updated["id"] = str(updated["_id"])
+    updated.pop("_id", None)
+    return updated
+
+
 @api_router.post("/maintenance/{item_id}/receipt")
 async def upload_maintenance_receipt(item_id: str, file: UploadFile = File(...), user: dict = Depends(get_current_user)):
     m = await db.maintenance.find_one({"_id": ObjectId(item_id)})
@@ -1114,6 +1137,14 @@ def _fmt_rsd(amount: float) -> str:
     return f"{amount:,.0f}".replace(",", ".") + " RSD"
 
 
+def _fmt_money(amount: float, cur: str = "RSD") -> str:
+    if cur == "EUR":
+        if amount.is_integer():
+            return f"{int(amount):,} €".replace(",", ".")
+        return f"{amount:,.2f} €".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"{amount:,.0f}".replace(",", ".") + " RSD"
+
+
 STATUS_TEXT = {"expired": "ISTEKLO", "expiring": "USKORO ISTIČE",
                "valid": "VAŽEĆE", "none": "Nema podatka"}
 
@@ -1154,22 +1185,40 @@ async def report_word(user: dict = Depends(get_current_user)):
             row[2 + idx].text = f"{exp}\n({st})"
 
     document.add_heading("Evidencija održavanja", level=1)
-    total_cost = sum(float(m.get("cost", 0) or 0) for m in maint)
+    total_cost = sum(float(m.get("cost", 0) or 0) + float(m.get("mechanic_cost", 0) or 0) for m in maint)
     plate_by_id = {str(v["_id"]): v.get("plate", "") for v in vehicles}
-    mtable = document.add_table(rows=1, cols=5)
+    mtable = document.add_table(rows=1, cols=7)
     mtable.style = "Light Grid Accent 1"
     mh = mtable.rows[0].cells
-    for i, h in enumerate(["Datum", "Vozilo", "Vrsta servisa", "Opis", "Trošak"]):
+    for i, h in enumerate(["Datum", "Vozilo", "Vrsta servisa", "Opis", "Rad meh.", "Delovi", "Ukupno"]):
         mh[i].text = h
+    total_rsd = 0.0
+    total_eur = 0.0
     for m in sorted(maint, key=lambda x: x.get("date", ""), reverse=True):
+        cur = m.get("cost_currency") or "RSD"
+        parts = float(m.get("cost", 0) or 0)
+        labor = float(m.get("mechanic_cost", 0) or 0)
+        subtotal = parts + labor
+        if cur == "EUR":
+            total_eur += subtotal
+        else:
+            total_rsd += subtotal
         r = mtable.add_row().cells
         r[0].text = m.get("date", "")
         r[1].text = plate_by_id.get(m.get("vehicle_id", ""), "")
         r[2].text = m.get("service_type", "")
         r[3].text = m.get("description", "")
-        r[4].text = _fmt_rsd(float(m.get("cost", 0) or 0))
+        r[4].text = _fmt_money(labor, cur) if labor else "-"
+        r[5].text = _fmt_money(parts, cur) if parts else "-"
+        r[6].text = _fmt_money(subtotal, cur)
     tp = document.add_paragraph()
-    tp.add_run(f"Ukupni troškovi održavanja: {_fmt_rsd(total_cost)}").bold = True
+    if total_eur > 0 and total_rsd > 0:
+        tot_str = f"{_fmt_money(total_rsd, 'RSD')} + {_fmt_money(total_eur, 'EUR')}"
+    elif total_eur > 0:
+        tot_str = _fmt_money(total_eur, 'EUR')
+    else:
+        tot_str = _fmt_money(total_rsd, 'RSD')
+    tp.add_run(f"Ukupni troškovi održavanja: {tot_str}").bold = True
 
     buf = io.BytesIO()
     document.save(buf)
@@ -1461,23 +1510,39 @@ async def report_word_vehicle(vehicle_id: str, user: dict = Depends(get_current_
         row[2].text = STATUS_TEXT[doc_status(info.get("expiry"))]
 
     document.add_heading("Istorija održavanja", level=1)
-    mtable = document.add_table(rows=1, cols=6)
+    mtable = document.add_table(rows=1, cols=8)
     mtable.style = "Light Grid Accent 1"
     mh = mtable.rows[0].cells
-    for i, h in enumerate(["Datum", "Vrsta servisa", "Opis", "Km", "Mehaničar", "Trošak"]):
+    for i, h in enumerate(["Datum", "Vrsta servisa", "Opis", "Km", "Mehaničar", "Rad mehaničara", "Delovi", "Ukupno"]):
         mh[i].text = h
-    total = 0.0
+    total_rsd = 0.0
+    total_eur = 0.0
     for m in maint:
-        total += float(m.get("cost", 0) or 0)
+        cur = m.get("cost_currency") or "RSD"
+        parts = float(m.get("cost", 0) or 0)
+        labor = float(m.get("mechanic_cost", 0) or 0)
+        subtotal = parts + labor
+        if cur == "EUR":
+            total_eur += subtotal
+        else:
+            total_rsd += subtotal
         r = mtable.add_row().cells
         r[0].text = m.get("date", "")
         r[1].text = m.get("service_type", "")
         r[2].text = m.get("description", "")
         r[3].text = str(m.get("odometer") or "")
         r[4].text = m.get("mechanic", "")
-        r[5].text = _fmt_rsd(float(m.get("cost", 0) or 0))
+        r[5].text = _fmt_money(labor, cur) if labor else "-"
+        r[6].text = _fmt_money(parts, cur) if parts else "-"
+        r[7].text = _fmt_money(subtotal, cur)
     tp = document.add_paragraph()
-    tp.add_run(f"Ukupni troškovi održavanja: {_fmt_rsd(total)}").bold = True
+    if total_eur > 0 and total_rsd > 0:
+        tot_str = f"{_fmt_money(total_rsd, 'RSD')} + {_fmt_money(total_eur, 'EUR')}"
+    elif total_eur > 0:
+        tot_str = _fmt_money(total_eur, 'EUR')
+    else:
+        tot_str = _fmt_money(total_rsd, 'RSD')
+    tp.add_run(f"Ukupni troškovi održavanja: {tot_str}").bold = True
 
     buf = io.BytesIO()
     document.save(buf)
@@ -2042,17 +2107,19 @@ async def report_excel(user: dict = Depends(get_current_user)):
             fmt_ddmmyy((v.get("tachograph") or {}).get("expiry"), ""),
         ])
     ws2 = wb.create_sheet("Održavanje")
-    ws2.append(["Datum", "Vozilo", "Vrsta servisa", "Opis", "Km", "Mehaničar", "Trošak (RSD)"])
+    ws2.append(["Datum", "Vozilo", "Vrsta servisa", "Opis", "Km", "Mehaničar", "Rad mehaničara (RSD)", "Delovi (RSD)", "Ukupan trošak (RSD)"])
     plate = {str(v["_id"]): v.get("plate", "") for v in vehicles}
     total = 0.0
     for m in sorted(maint, key=lambda x: x.get("date", ""), reverse=True):
-        c = float(m.get("cost", 0) or 0)
-        total += c
+        parts = float(m.get("cost", 0) or 0)
+        labor = float(m.get("mechanic_cost", 0) or 0)
+        subtotal = parts + labor
+        total += subtotal
         ws2.append([m.get("date", ""), plate.get(m.get("vehicle_id", ""), ""),
                     m.get("service_type", ""), m.get("description", ""),
-                    m.get("odometer", "") or "", m.get("mechanic", ""), c])
+                    m.get("odometer", "") or "", m.get("mechanic", ""), labor, parts, subtotal])
     ws2.append([])
-    ws2.append(["", "", "", "", "", "Ukupno:", total])
+    ws2.append(["", "", "", "", "", "", "", "Ukupno:", total])
 
     drivers = await db.drivers.find().sort("last_name", 1).to_list(1000)
     ws3 = wb.create_sheet("Vozači")
@@ -2760,7 +2827,9 @@ def _normalize_amounts(items, rsd_rate):
 
 
 def maint_eur(m: dict, rsd_rate: float) -> float:
-    return to_eur(m.get("cost"), m.get("cost_currency") or "RSD", None, rsd_rate)
+    parts = float(m.get("cost", 0) or 0)
+    labor = float(m.get("mechanic_cost", 0) or 0)
+    return to_eur(parts + labor, m.get("cost_currency") or "RSD", None, rsd_rate)
 
 
 class DriverAccountCreate(BaseModel):
@@ -3339,4 +3408,10 @@ async def shutdown_db_client():
         sync_client.close()
     except Exception:
         pass
+
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8001))
+    uvicorn.run("server:app", host="0.0.0.0", port=port, reload=True)
 
