@@ -2132,19 +2132,27 @@ async def report_excel(user: dict = Depends(get_current_user)):
             fmt_ddmmyy((v.get("tachograph") or {}).get("expiry"), ""),
         ])
     ws2 = wb.create_sheet("Održavanje")
-    ws2.append(["Datum", "Vozilo", "Vrsta servisa", "Opis", "Km", "Mehaničar", "Rad mehaničara (RSD)", "Delovi (RSD)", "Ukupan trošak (RSD)"])
+    ws2.append(["Datum", "Vozilo", "Vrsta servisa", "Opis", "Km", "Mehaničar", "Rad mehaničara", "Valuta (rad)", "Delovi", "Valuta (delovi)", "Ukupno (EUR)"])
     plate = {str(v["_id"]): v.get("plate", "") for v in vehicles}
-    total = 0.0
+    total_eur = 0.0
+    rsd_rate = await get_rsd_rate()
     for m in sorted(maint, key=lambda x: x.get("date", ""), reverse=True):
         parts = float(m.get("cost", 0) or 0)
         labor = float(m.get("mechanic_cost", 0) or 0)
-        subtotal = parts + labor
-        total += subtotal
+        p_cur = m.get("cost_currency") or "RSD"
+        l_cur = m.get("mechanic_cost_currency") or p_cur
+        p_eur = parts if p_cur == "EUR" else (parts / rsd_rate if rsd_rate else parts / 117.0)
+        l_eur = labor if l_cur == "EUR" else (labor / rsd_rate if rsd_rate else labor / 117.0)
+        subtotal_eur = round(p_eur + l_eur, 2)
+        total_eur += subtotal_eur
         ws2.append([m.get("date", ""), plate.get(m.get("vehicle_id", ""), ""),
                     m.get("service_type", ""), m.get("description", ""),
-                    m.get("odometer", "") or "", m.get("mechanic", ""), labor, parts, subtotal])
+                    m.get("odometer", "") or "", m.get("mechanic", ""),
+                    labor if labor else 0, l_cur,
+                    parts if parts else 0, p_cur,
+                    subtotal_eur])
     ws2.append([])
-    ws2.append(["", "", "", "", "", "", "", "Ukupno:", total])
+    ws2.append(["", "", "", "", "", "", "", "", "", "Ukupno (EUR):", round(total_eur, 2)])
 
     drivers = await db.drivers.find().sort("last_name", 1).to_list(1000)
     ws3 = wb.create_sheet("Vozači")
