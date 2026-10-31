@@ -136,21 +136,20 @@ export default function Maintenance() {
       const payload = {
         mechanic_cost: Number(laborModal.mechanic_cost) || 0,
         mechanic: laborModal.mechanic || "",
-        cost_currency: chosenCur,
         mechanic_cost_currency: chosenCur,
       };
       await api.patch(`/maintenance/${laborModal.item.id}/labor`, payload);
-      toast.success("Rad mehaničara sačuvan");
+      toast.success("Rad sačuvan");
       setItems((prev) =>
         prev.map((m) =>
           m.id === laborModal.item.id
-            ? { ...m, mechanic_cost: payload.mechanic_cost, mechanic: payload.mechanic, mechanic_cost_currency: chosenCur, cost_currency: chosenCur }
+            ? { ...m, mechanic_cost: payload.mechanic_cost, mechanic: payload.mechanic, mechanic_cost_currency: chosenCur }
             : m
         )
       );
       setLaborModal(null);
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Greška pri čuvanju rada mehaničara");
+      toast.error(err.response?.data?.detail || "Greška pri čuvanju rada");
     } finally {
       setSavingLabor(false);
     }
@@ -172,7 +171,7 @@ export default function Maintenance() {
 
   const toEur = (m) => {
     const pCur = m.cost_currency || "RSD";
-    const lCur = m.mechanic_cost_currency || pCur;
+    const lCur = m.mechanic_cost_currency || "EUR";
     const pVal = Number(m.cost) || 0;
     const lVal = Number(m.mechanic_cost) || 0;
     const pEur = pCur === "EUR" ? pVal : pVal / (rate || 117);
@@ -181,7 +180,7 @@ export default function Maintenance() {
   };
   const costLbl = (m) => money(toEur(m));
   const laborEur = (m) => {
-    const lCur = m.mechanic_cost_currency || m.cost_currency || "RSD";
+    const lCur = m.mechanic_cost_currency || "EUR";
     const v = Number(m.mechanic_cost) || 0;
     return lCur === "EUR" ? v : v / (rate || 117);
   };
@@ -240,7 +239,7 @@ export default function Maintenance() {
                   <th className="px-5 py-3">Vrsta servisa</th>
                   <th className="px-5 py-3">Opis</th>
                   <th className="px-5 py-3">Mehaničar</th>
-                  <th className="px-5 py-3">Rad meh.</th>
+                  <th className="px-5 py-3">Rad</th>
                   <th className="px-5 py-3">Trošak</th>
                   <th className="px-5 py-3"></th>
                 </tr>
@@ -408,7 +407,7 @@ export default function Maintenance() {
                 </div>
               </div>
               <div>
-                <label className={`${labelCls} whitespace-nowrap`}>Rad mehaničara (cena)</label>
+                <label className={`${labelCls} whitespace-nowrap`}>Rad (cena)</label>
                 <div className="flex gap-1.5 mt-1">
                   <input
                     data-testid="gm-mechanic-cost"
@@ -470,7 +469,7 @@ export default function Maintenance() {
           <DialogHeader>
             <DialogTitle className="font-head flex items-center gap-2">
               <Wrench className="h-5 w-5 text-blue-400" />
-              Brzi unos rada mehaničara
+              Brzi unos rada
             </DialogTitle>
           </DialogHeader>
           {laborModal?.item && (
@@ -486,7 +485,7 @@ export default function Maintenance() {
                 </div>
               </div>
               <div>
-                <label className={labelCls}>Cena rada mehaničara *</label>
+                <label className={labelCls}>Cena rada *</label>
                 <div className="flex gap-1.5 mt-1">
                   <input
                     type="number"

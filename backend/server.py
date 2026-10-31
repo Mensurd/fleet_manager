@@ -936,7 +936,6 @@ async def update_maintenance_labor(item_id: str, payload: MechanicLaborUpdate, u
     cur = payload.mechanic_cost_currency or payload.cost_currency
     if cur is not None:
         update_fields["mechanic_cost_currency"] = cur
-        update_fields["cost_currency"] = cur
     await db.maintenance.update_one({"_id": ObjectId(item_id)}, {"$set": update_fields})
     updated = await db.maintenance.find_one({"_id": ObjectId(item_id)})
     if not updated:
@@ -1155,7 +1154,11 @@ STATUS_TEXT = {"expired": "ISTEKLO", "expiring": "USKORO ISTIČE",
 
 
 @api_router.get("/reports/word")
-async def report_word(user: dict = Depends(get_current_user)):
+async def report_word(currency: Optional[str] = "EUR", user: dict = Depends(get_current_user)):
+    cur = (currency or "EUR").upper()
+    if cur not in ("EUR", "RSD"):
+        cur = "EUR"
+    rsd_rate = await get_rsd_rate() or 117.0
     vehicles = await db.vehicles.find().sort("plate", 1).to_list(1000)
     maint = await db.maintenance.find().to_list(5000)
 
@@ -1190,50 +1193,46 @@ async def report_word(user: dict = Depends(get_current_user)):
             row[2 + idx].text = f"{exp}\n({st})"
 
     document.add_heading("Evidencija održavanja", level=1)
-    total_cost = sum(float(m.get("cost", 0) or 0) + float(m.get("mechanic_cost", 0) or 0) for m in maint)
     plate_by_id = {str(v["_id"]): v.get("plate", "") for v in vehicles}
     mtable = document.add_table(rows=1, cols=7)
     mtable.style = "Light Grid Accent 1"
     mh = mtable.rows[0].cells
-    for i, h in enumerate(["Datum", "Vozilo", "Vrsta servisa", "Opis", "Rad meh.", "Delovi", "Ukupno"]):
+    for i, h in enumerate(["Datum", "Vozilo", "Vrsta servisa", "Opis", "Rad", "Delovi", "Ukupno"]):
         mh[i].text = h
-    total_rsd = 0.0
-    total_eur = 0.0
+    total_val = 0.0
     for m in sorted(maint, key=lambda x: x.get("date", ""), reverse=True):
         p_cur = m.get("cost_currency") or "RSD"
-        l_cur = m.get("mechanic_cost_currency") or p_cur
+        l_cur = m.get("mechanic_cost_currency") or "EUR"
         parts = float(m.get("cost", 0) or 0)
         labor = float(m.get("mechanic_cost", 0) or 0)
-        if p_cur == "EUR":
-            total_eur += parts
+        p_eur = parts if p_cur == "EUR" else parts / rsd_rate
+        l_eur = labor if l_cur == "EUR" else labor / rsd_rate
+        if cur == "RSD":
+            p_val = round(p_eur * rsd_rate) if parts else 0
+            l_val = round(l_eur * rsd_rate) if labor else 0
+            sub_val = p_val + l_val
+            total_val += sub_val
+            p_str = _fmt_money(p_val, "RSD") if parts else "-"
+            l_str = _fmt_money(l_val, "RSD") if labor else "-"
+            subtotal_str = _fmt_money(sub_val, "RSD")
         else:
-            total_rsd += parts
-        if l_cur == "EUR":
-            total_eur += labor
-        else:
-            total_rsd += labor
-        if p_cur == l_cur:
-            subtotal_str = _fmt_money(parts + labor, p_cur)
-        else:
-            parts_str = _fmt_money(parts, p_cur) if parts else ""
-            labor_str = _fmt_money(labor, l_cur) if labor else ""
-            subtotal_str = f"{parts_str} + {labor_str}".strip(" +") or "0 RSD"
+            p_val = round(p_eur, 2) if parts else 0
+            l_val = round(l_eur, 2) if labor else 0
+            sub_val = round(p_eur + l_eur, 2)
+            total_val += sub_val
+            p_str = _fmt_money(p_val, "EUR") if parts else "-"
+            l_str = _fmt_money(l_val, "EUR") if labor else "-"
+            subtotal_str = _fmt_money(sub_val, "EUR")
         r = mtable.add_row().cells
-        r[0].text = m.get("date", "")
+        r[0].text = fmt_ddmmyy(m.get("date", ""))
         r[1].text = plate_by_id.get(m.get("vehicle_id", ""), "")
         r[2].text = m.get("service_type", "")
         r[3].text = m.get("description", "")
-        r[4].text = _fmt_money(labor, l_cur) if labor else "-"
-        r[5].text = _fmt_money(parts, p_cur) if parts else "-"
+        r[4].text = l_str
+        r[5].text = p_str
         r[6].text = subtotal_str
     tp = document.add_paragraph()
-    if total_eur > 0 and total_rsd > 0:
-        tot_str = f"{_fmt_money(total_rsd, 'RSD')} + {_fmt_money(total_eur, 'EUR')}"
-    elif total_eur > 0:
-        tot_str = _fmt_money(total_eur, 'EUR')
-    else:
-        tot_str = _fmt_money(total_rsd, 'RSD')
-    tp.add_run(f"Ukupni troškovi održavanja: {tot_str}").bold = True
+    tp.add_run(f"Ukupni troškovi održavanja: {_fmt_money(total_val, cur)}").bold = True
 
     buf = io.BytesIO()
     document.save(buf)
@@ -1485,7 +1484,11 @@ async def report_word_drivers(user: dict = Depends(get_current_user)):
 
 
 @api_router.get("/reports/word/{vehicle_id}")
-async def report_word_vehicle(vehicle_id: str, user: dict = Depends(get_current_user)):
+async def report_word_vehicle(vehicle_id: str, currency: Optional[str] = "EUR", user: dict = Depends(get_current_user)):
+    cur = (currency or "EUR").upper()
+    if cur not in ("EUR", "RSD"):
+        cur = "EUR"
+    rsd_rate = await get_rsd_rate() or 117.0
     v = await db.vehicles.find_one({"_id": ObjectId(vehicle_id)})
     if not v:
         raise HTTPException(status_code=404, detail="Vozilo nije pronađeno")
@@ -1528,46 +1531,43 @@ async def report_word_vehicle(vehicle_id: str, user: dict = Depends(get_current_
     mtable = document.add_table(rows=1, cols=8)
     mtable.style = "Light Grid Accent 1"
     mh = mtable.rows[0].cells
-    for i, h in enumerate(["Datum", "Vrsta servisa", "Opis", "Km", "Mehaničar", "Rad mehaničara", "Delovi", "Ukupno"]):
+    for i, h in enumerate(["Datum", "Vrsta servisa", "Opis", "Km", "Mehaničar", "Rad", "Delovi", "Ukupno"]):
         mh[i].text = h
-    total_rsd = 0.0
-    total_eur = 0.0
+    total_val = 0.0
     for m in maint:
         p_cur = m.get("cost_currency") or "RSD"
-        l_cur = m.get("mechanic_cost_currency") or p_cur
+        l_cur = m.get("mechanic_cost_currency") or "EUR"
         parts = float(m.get("cost", 0) or 0)
         labor = float(m.get("mechanic_cost", 0) or 0)
-        if p_cur == "EUR":
-            total_eur += parts
+        p_eur = parts if p_cur == "EUR" else parts / rsd_rate
+        l_eur = labor if l_cur == "EUR" else labor / rsd_rate
+        if cur == "RSD":
+            p_val = round(p_eur * rsd_rate) if parts else 0
+            l_val = round(l_eur * rsd_rate) if labor else 0
+            sub_val = p_val + l_val
+            total_val += sub_val
+            p_str = _fmt_money(p_val, "RSD") if parts else "-"
+            l_str = _fmt_money(l_val, "RSD") if labor else "-"
+            subtotal_str = _fmt_money(sub_val, "RSD")
         else:
-            total_rsd += parts
-        if l_cur == "EUR":
-            total_eur += labor
-        else:
-            total_rsd += labor
-        if p_cur == l_cur:
-            subtotal_str = _fmt_money(parts + labor, p_cur)
-        else:
-            parts_str = _fmt_money(parts, p_cur) if parts else ""
-            labor_str = _fmt_money(labor, l_cur) if labor else ""
-            subtotal_str = f"{parts_str} + {labor_str}".strip(" +") or "0 RSD"
+            p_val = round(p_eur, 2) if parts else 0
+            l_val = round(l_eur, 2) if labor else 0
+            sub_val = round(p_eur + l_eur, 2)
+            total_val += sub_val
+            p_str = _fmt_money(p_val, "EUR") if parts else "-"
+            l_str = _fmt_money(l_val, "EUR") if labor else "-"
+            subtotal_str = _fmt_money(sub_val, "EUR")
         r = mtable.add_row().cells
-        r[0].text = m.get("date", "")
+        r[0].text = fmt_ddmmyy(m.get("date", ""))
         r[1].text = m.get("service_type", "")
         r[2].text = m.get("description", "")
         r[3].text = str(m.get("odometer") or "")
         r[4].text = m.get("mechanic", "")
-        r[5].text = _fmt_money(labor, l_cur) if labor else "-"
-        r[6].text = _fmt_money(parts, p_cur) if parts else "-"
+        r[5].text = l_str
+        r[6].text = p_str
         r[7].text = subtotal_str
     tp = document.add_paragraph()
-    if total_eur > 0 and total_rsd > 0:
-        tot_str = f"{_fmt_money(total_rsd, 'RSD')} + {_fmt_money(total_eur, 'EUR')}"
-    elif total_eur > 0:
-        tot_str = _fmt_money(total_eur, 'EUR')
-    else:
-        tot_str = _fmt_money(total_rsd, 'RSD')
-    tp.add_run(f"Ukupni troškovi održavanja: {tot_str}").bold = True
+    tp.add_run(f"Ukupni troškovi održavanja: {_fmt_money(total_val, cur)}").bold = True
 
     buf = io.BytesIO()
     document.save(buf)
@@ -2112,7 +2112,11 @@ async def put_settings_recipients(payload: RecipientsUpdate, user: dict = Depend
 
 
 @api_router.get("/reports/excel")
-async def report_excel(user: dict = Depends(get_current_user)):
+async def report_excel(currency: Optional[str] = "EUR", user: dict = Depends(get_current_user)):
+    cur = (currency or "EUR").upper()
+    if cur not in ("EUR", "RSD"):
+        cur = "EUR"
+    rsd_rate = await get_rsd_rate() or 117.0
     vehicles = await db.vehicles.find().sort("plate", 1).to_list(1000)
     maint = await db.maintenance.find().to_list(5000)
     wb = Workbook()
@@ -2132,27 +2136,31 @@ async def report_excel(user: dict = Depends(get_current_user)):
             fmt_ddmmyy((v.get("tachograph") or {}).get("expiry"), ""),
         ])
     ws2 = wb.create_sheet("Održavanje")
-    ws2.append(["Datum", "Vozilo", "Vrsta servisa", "Opis", "Km", "Mehaničar", "Rad mehaničara", "Valuta (rad)", "Delovi", "Valuta (delovi)", "Ukupno (EUR)"])
+    ws2.append(["Datum", "Vozilo", "Vrsta servisa", "Opis", "Km", "Mehaničar", "Rad", "Delovi", f"Ukupno ({cur})"])
     plate = {str(v["_id"]): v.get("plate", "") for v in vehicles}
-    total_eur = 0.0
-    rsd_rate = await get_rsd_rate()
+    total_val = 0.0
     for m in sorted(maint, key=lambda x: x.get("date", ""), reverse=True):
         parts = float(m.get("cost", 0) or 0)
         labor = float(m.get("mechanic_cost", 0) or 0)
         p_cur = m.get("cost_currency") or "RSD"
-        l_cur = m.get("mechanic_cost_currency") or p_cur
-        p_eur = parts if p_cur == "EUR" else (parts / rsd_rate if rsd_rate else parts / 117.0)
-        l_eur = labor if l_cur == "EUR" else (labor / rsd_rate if rsd_rate else labor / 117.0)
-        subtotal_eur = round(p_eur + l_eur, 2)
-        total_eur += subtotal_eur
-        ws2.append([m.get("date", ""), plate.get(m.get("vehicle_id", ""), ""),
+        l_cur = m.get("mechanic_cost_currency") or "EUR"
+        p_eur = parts if p_cur == "EUR" else parts / rsd_rate
+        l_eur = labor if l_cur == "EUR" else labor / rsd_rate
+        if cur == "RSD":
+            p_val = round(p_eur * rsd_rate) if parts else 0
+            l_val = round(l_eur * rsd_rate) if labor else 0
+            sub_val = p_val + l_val
+        else:
+            p_val = round(p_eur, 2) if parts else 0
+            l_val = round(l_eur, 2) if labor else 0
+            sub_val = round(p_eur + l_eur, 2)
+        total_val += sub_val
+        ws2.append([fmt_ddmmyy(m.get("date", "")), plate.get(m.get("vehicle_id", ""), ""),
                     m.get("service_type", ""), m.get("description", ""),
                     m.get("odometer", "") or "", m.get("mechanic", ""),
-                    labor if labor else 0, l_cur,
-                    parts if parts else 0, p_cur,
-                    subtotal_eur])
+                    l_val, p_val, sub_val])
     ws2.append([])
-    ws2.append(["", "", "", "", "", "", "", "", "", "Ukupno (EUR):", round(total_eur, 2)])
+    ws2.append(["", "", "", "", "", "", "", f"Ukupno ({cur}):", round(total_val, 2) if cur == "EUR" else total_val])
 
     drivers = await db.drivers.find().sort("last_name", 1).to_list(1000)
     ws3 = wb.create_sheet("Vozači")
@@ -3415,6 +3423,15 @@ async def startup():
         logger.info("Storage initialized")
     except Exception as e:
         logger.error(f"Storage init failed: {e}")
+    try:
+        res = await db.maintenance.update_many(
+            {"cost": {"$gte": 5000}, "cost_currency": "EUR"},
+            {"$set": {"cost_currency": "RSD"}}
+        )
+        if res.modified_count > 0:
+            logger.info(f"Auto-healed {res.modified_count} maintenance records with corrupted EUR parts currency")
+    except Exception as e:
+        logger.error(f"Auto-heal maintenance error: {e}")
     admin_password = os.environ.get("ADMIN_PASSWORD", "admin123")
     admin_emails = [e.strip().lower() for e in
                     [os.environ.get("ADMIN_EMAIL", "admin@example.com"),

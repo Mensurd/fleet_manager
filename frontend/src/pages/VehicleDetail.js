@@ -55,7 +55,7 @@ export default function VehicleDetail() {
   const { money, rate, currency } = useCurrency();
   const maintEur = (m) => {
     const pCur = m.cost_currency || "RSD";
-    const lCur = m.mechanic_cost_currency || pCur;
+    const lCur = m.mechanic_cost_currency || "EUR";
     const pVal = Number(m.cost) || 0;
     const lVal = Number(m.mechanic_cost) || 0;
     const pEur = pCur === "EUR" ? pVal : pVal / (rate || 117);
@@ -63,7 +63,7 @@ export default function VehicleDetail() {
     return pEur + lEur;
   };
   const laborEur = (m) => {
-    const lCur = m.mechanic_cost_currency || m.cost_currency || "RSD";
+    const lCur = m.mechanic_cost_currency || "EUR";
     const v = Number(m.mechanic_cost) || 0;
     return lCur === "EUR" ? v : v / (rate || 117);
   };
@@ -297,7 +297,7 @@ export default function VehicleDetail() {
     setDlWord(true);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API}/reports/word/${id}`, {
+      const res = await fetch(`${API}/reports/word/${id}?currency=${currency}`, {
         credentials: "include",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
@@ -328,51 +328,40 @@ export default function VehicleDetail() {
       const payload = {
         mechanic_cost: Number(laborModal.mechanic_cost) || 0,
         mechanic: laborModal.mechanic || "",
-        cost_currency: chosenCur,
         mechanic_cost_currency: chosenCur,
       };
       await api.patch(`/maintenance/${laborModal.item.id}/labor`, payload);
-      toast.success("Rad mehaničara sačuvan");
+      toast.success("Rad sačuvan");
       setMaint((prev) =>
         prev.map((m) =>
           m.id === laborModal.item.id
-            ? { ...m, mechanic_cost: payload.mechanic_cost, mechanic: payload.mechanic, mechanic_cost_currency: chosenCur, cost_currency: chosenCur }
+            ? { ...m, mechanic_cost: payload.mechanic_cost, mechanic: payload.mechanic, mechanic_cost_currency: chosenCur }
             : m
         )
       );
       setLaborModal(null);
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Greška pri čuvanju rada mehaničara");
+      toast.error(err.response?.data?.detail || "Greška pri čuvanju rada");
     } finally {
       setSavingLabor(false);
     }
   };
 
   const printHistory = () => {
-    let totalRsd = 0;
-    let totalEur = 0;
+    const totalEur = maint.reduce((s, m) => s + maintEur(m), 0);
     const rows = maint
       .map((m) => {
-        const pCur = m.cost_currency || "RSD";
-        const lCur = m.mechanic_cost_currency || pCur;
-        const pSuffix = pCur === "EUR" ? " €" : " RSD";
-        const lSuffix = lCur === "EUR" ? " €" : " RSD";
-        const parts = Number(m.cost) || 0;
         const labor = Number(m.mechanic_cost) || 0;
-        if (pCur === "EUR") totalEur += parts; else totalRsd += parts;
-        if (lCur === "EUR") totalEur += labor; else totalRsd += labor;
-        const subtotalStr = (pCur === lCur)
-          ? `${(parts + labor).toLocaleString("de-DE")}${pSuffix}`
-          : `${parts > 0 ? parts.toLocaleString("de-DE") + pSuffix : ""}${parts > 0 && labor > 0 ? " + " : ""}${labor > 0 ? labor.toLocaleString("de-DE") + lSuffix : ""}`.trim() || "0 RSD";
+        const parts = Number(m.cost) || 0;
         return `<tr>
           <td>${fmtDate(m.date)}</td>
           <td>${m.service_type || ""}</td>
           <td>${m.description || ""}</td>
           <td>${m.odometer || ""}</td>
           <td>${m.mechanic || ""}</td>
-          <td style="text-align:right">${labor > 0 ? labor.toLocaleString("de-DE") + lSuffix : "—"}</td>
-          <td style="text-align:right">${parts > 0 ? parts.toLocaleString("de-DE") + pSuffix : "—"}</td>
-          <td style="text-align:right;font-weight:bold">${subtotalStr}</td>
+          <td style="text-align:right">${labor > 0 ? money(laborEur(m)) : "—"}</td>
+          <td style="text-align:right">${parts > 0 ? money(partsEur(m)) : "—"}</td>
+          <td style="text-align:right;font-weight:bold">${money(maintEur(m))}</td>
         </tr>`;
       })
       .join("");
@@ -382,14 +371,7 @@ export default function VehicleDetail() {
         return `<tr><td>${DOC_META[k].label}</td><td>${fmtDate(info.expiry)}</td></tr>`;
       })
       .join("");
-    let totLabel = "";
-    if (totalEur > 0 && totalRsd > 0) {
-      totLabel = `${totalRsd.toLocaleString("de-DE")} RSD + ${totalEur.toLocaleString("de-DE", { minimumFractionDigits: 0, maximumFractionDigits: 2 })} €`;
-    } else if (totalEur > 0) {
-      totLabel = `${totalEur.toLocaleString("de-DE", { minimumFractionDigits: 0, maximumFractionDigits: 2 })} €`;
-    } else {
-      totLabel = `${totalRsd.toLocaleString("de-DE")} RSD`;
-    }
+    const totLabel = money(totalEur);
     const w = window.open("", "_blank");
     w.document.write(`<!doctype html><html lang="sr"><head><meta charset="utf-8"><title>Karton vozila ${vehicle.plate}</title>
       <style>
@@ -408,7 +390,7 @@ export default function VehicleDetail() {
       <h2>Status dokumentacije</h2>
       <table><tr><th>Dokument</th><th>Datum isteka</th></tr>${docRows}</table>
       <h2>Istorija održavanja</h2>
-      <table><tr><th>Datum</th><th>Vrsta servisa</th><th>Opis</th><th>Km</th><th>Mehaničar</th><th style="text-align:right">Rad mehaničara</th><th style="text-align:right">Delovi</th><th style="text-align:right">Ukupan trošak</th></tr>${rows || '<tr><td colspan="8">Nema zapisa</td></tr>'}</table>
+      <table><tr><th>Datum</th><th>Vrsta servisa</th><th>Opis</th><th>Km</th><th>Mehaničar</th><th style="text-align:right">Rad</th><th style="text-align:right">Delovi</th><th style="text-align:right">Ukupan trošak</th></tr>${rows || '<tr><td colspan="8">Nema zapisa</td></tr>'}</table>
       <div class="tot">Ukupni troškovi održavanja: ${totLabel}</div>
       </body></html>`);
     w.document.close();
@@ -874,7 +856,7 @@ export default function VehicleDetail() {
                   <th className="px-5 py-3">Opis</th>
                   <th className="px-5 py-3">Km</th>
                   <th className="px-5 py-3">Mehaničar</th>
-                  <th className="px-5 py-3">Rad meh.</th>
+                  <th className="px-5 py-3">Rad</th>
                   <th className="px-5 py-3">Trošak</th>
                   <th className="px-5 py-3"></th>
                 </tr>
@@ -1056,7 +1038,7 @@ export default function VehicleDetail() {
                 </div>
               </div>
               <div>
-                <label className={`${labelCls} whitespace-nowrap`}>Rad mehaničara (cena)</label>
+                <label className={`${labelCls} whitespace-nowrap`}>Rad (cena)</label>
                 <div className="flex gap-1.5 mt-1">
                   <input
                     data-testid="maintenance-mechanic-cost-input"
@@ -1145,7 +1127,7 @@ export default function VehicleDetail() {
           <DialogHeader>
             <DialogTitle className="font-head flex items-center gap-2">
               <Wrench className="h-5 w-5 text-blue-400" />
-              Brzi unos rada mehaničara
+              Brzi unos rada
             </DialogTitle>
           </DialogHeader>
           {laborModal?.item && (
@@ -1161,7 +1143,7 @@ export default function VehicleDetail() {
                 </div>
               </div>
               <div>
-                <label className={labelCls}>Cena rada mehaničara *</label>
+                <label className={labelCls}>Cena rada *</label>
                 <div className="flex gap-1.5 mt-1">
                   <input
                     type="number"

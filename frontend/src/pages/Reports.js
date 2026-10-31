@@ -31,7 +31,7 @@ export default function Reports() {
   const [truck, setTruck] = useState(null);
   const [tVehicle, setTVehicle] = useState("");
 
-  const { money: eur, rate } = useCurrency();
+  const { money: eur, rate, currency } = useCurrency();
   const maintEur = (m) => (m.cost_currency === "EUR" ? Number(m.cost) || 0 : (Number(m.cost) || 0) / (rate || 117));
 
   const sRange =
@@ -116,7 +116,7 @@ export default function Reports() {
     setDlx(true);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API}/reports/excel`, {
+      const res = await fetch(`${API}/reports/excel?currency=${currency}`, {
         credentials: "include",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
@@ -147,7 +147,7 @@ export default function Reports() {
     setDl(true);
     try {
       const token = localStorage.getItem("token");
-      const res = await fetch(`${API}/reports/word`, {
+      const res = await fetch(`${API}/reports/word?currency=${currency}`, {
         credentials: "include",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
